@@ -4,22 +4,22 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>io.github.jespersm.indexinator</groupId>
-    <artifactId>indexinator-parent</artifactId>
+    <groupId>io.github.jespersm.jpa-twca</groupId>
+    <artifactId>jpa-twca-parent</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>Indexinator</name>
-    <description>JPA database inspection tool for detecting missing indexes and other issues</description>
+    <name>JPA T.W.C.A</name>
+    <description>JPA Tool Without a Cool Acronym</description>
 
     <modules>
         <module>indexinator-core</module>
         <module>indexinator-hibernate</module>
         <module>unselectinator-core</module>
         <module>unselectinator-hibernate</module>
-        <module>indexinator-test-parent</module>
-        <module>indexinator-test-sb35</module>
-        <module>indexinator-test-sb4</module>
+        <module>jpa-twca-test-parent</module>
+        <module>jpa-twca-test-sb35</module>
+        <module>jpa-twca-test-sb4</module>
     </modules>
 
     <properties>
@@ -27,9 +27,8 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <spring.boot.version>4.0.4</spring.boot.version>
-<!--        <spring.boot.version>3.5.11</spring.boot.version>-->
-        <!-- <hibernate.version>6.5.1.Final</hibernate.version> -->
+<!--        <spring.boot.version>4.0.4</spring.boot.version>-->
+        <spring.boot.version>3.5.12</spring.boot.version>
         <junit.version>5.12.0</junit.version>
     </properties>
 

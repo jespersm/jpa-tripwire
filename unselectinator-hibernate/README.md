@@ -11,12 +11,12 @@
 
 ## Spring Integration in This Repository
 
-The shared test fixture (`indexinator-test-parent`) demonstrates one-stop setup in:
+The shared test fixture (`jpa-twca-test-parent`) demonstrates one-stop setup in:
 
-- `indexinator-test-parent/src/main/java/io/github/jespersm/indexinator/test/unselectinator/UnselectinatorDemoConfiguration.java`
-- `indexinator-test-parent/src/main/java/io/github/jespersm/indexinator/test/unselectinator/RepositoryFetchObservationAspect.java`
+- `jpa-twca-test-parent/src/main/java/io/github/jespersm/jpa-twca/testunselectinator/UnselectinatorDemoConfiguration.java`
+- `jpa-twca-test-parent/src/main/java/io/github/jespersm/jpa-twca/testunselectinator/RepositoryFetchObservationAspect.java`
 
 See integration tests in:
 
-- `indexinator-test-parent/src/test/java/io/github/jespersm/indexinator/test/IndexinatorIntegrationTest.java`
+- `jpa-twca-test-parent/src/test/java/io/github/jespersm/jpa-twca/testIndexinatorIntegrationTest.java`
 

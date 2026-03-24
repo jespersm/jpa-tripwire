@@ -1,12 +1,13 @@
-# Indexinator
+# JPA Tool Without a Cool Acronym (JPA T.W.C.A.)
 
-A Java tool for inspecting JPA/Hibernate models and databases to detect potential performance issues, particularly missing indexes.
+A Java tool for inspecting JPA/Hibernate models and databases to detect potential performance issues. Once burned twice shy.
 
 ## Overview
 
-I built Indexinator to help developers identify common database performance issues rooted in the leaking abstraction that is an O/R Mapper.
+I built the JPA TWCA to help developers identify common database performance issues rooted in the leaking abstraction that is an O/R Mapper.
  The tool analyzes your entity classes and the actual database schema to find discrepancies that can lead to slow queries and performance degradation:
 
+- N+1 selects due to missing fetch graphs or general belief in magic
 - Missing indexes on foreign key columns
 - Missing indexes on unique constraint columns
 - Tables without primary keys
@@ -18,20 +19,26 @@ I built Indexinator to help developers identify common database performance issu
 This is a multi-module Maven project:
 
 ```
-jpa_helper/
+jpa-twca/
 ├── indexinator-core/          # Core inspection library
 │   └── Reusable library for JPA/database inspection
 │
-├── indexinator-hibernate/     # Hibernate provider extension
+├── indexinator-hibernate/     # Hibernate schema informationprovider extension
 │   └── ServiceLoader-based mapping resolver for requirement-to-schema mapping
 │
-├── indexinator-test-parent/   # Shared Spring Boot test fixture sources
+├── unselectinator-core/       # Core interceptor library for detecting N+1 selects
+│   └── Reusable library for repository method interception and query analysis
+│
+├── unselectinator-hibernate/     # Hibernate event provider extension
+│   └── ServiceLoader-based interceptor provider for detecting N+1 selects at runtime
+│
+├── jpa-twca-test-parent/   # Shared Spring Boot test fixture sources
 │   └── Main/test sources reused by versioned test runners
 │
-├── indexinator-test-sb35/     # Source-less Spring Boot 3.5 runner
+├── jpa-twca-test-sb35/     # Source-less Spring Boot 3.5 runner
 │   └── Java 17 runner compiling shared test-parent sources
 │
-└── indexinator-test-sb4/      # Source-less Spring Boot 4 runner
+└── jpa-twca-test-sb4/      # Source-less Spring Boot 4 runner
     └── Java 21 runner compiling shared test-parent sources
 ```
 

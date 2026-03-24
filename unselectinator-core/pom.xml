@@ -5,8 +5,8 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.github.jespersm.indexinator</groupId>
-        <artifactId>indexinator-parent</artifactId>
+        <groupId>io.github.jespersm.jpa-twca</groupId>
+        <artifactId>jpa-twca-parent</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
