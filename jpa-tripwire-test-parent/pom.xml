@@ -16,9 +16,6 @@
     <packaging>pom</packaging>
 
     <properties>
-        <!-- Never publish test modules to Maven Central -->
-        <maven.deploy.skip>true</maven.deploy.skip>
-
         <!-- Default Spring Boot line; children can override this property -->
         <spring.boot.test.version>3.5.11</spring.boot.test.version>
         <maven.compiler.source>17</maven.compiler.source>
@@ -127,23 +124,6 @@
         </pluginManagement>
     </build>
 
-    <profiles>
-        <profile>
-            <!-- Ensure Central publishing plugin also skips for test modules -->
-            <id>release</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.sonatype.central</groupId>
-                        <artifactId>central-publishing-maven-plugin</artifactId>
-                        <configuration>
-                            <skipPublishing>true</skipPublishing>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
 
 </project>
 

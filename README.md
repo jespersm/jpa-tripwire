@@ -44,7 +44,7 @@ jpa-tripwire/
 
 ## Features
 
-### Indexinator Core
+### Indexinator
 
 The core library provides:
 
@@ -53,7 +53,7 @@ The core library provides:
 - **Issue Detection**: Compares entity metadata with database schema to find issues
 - **Detailed Reporting**: Generates comprehensive reports with severity levels and recommendations
 
-### Detection Capabilities
+#### Missing Index Detection
 
 | Issue Type | Severity | Description |
 |------------|----------|-------------|
@@ -63,13 +63,18 @@ The core library provides:
 | Missing Query Index | MEDIUM | Columns used in Spring Data derived queries without indexes |
 | Potential Composite Index | LOW | Opportunity for composite indexes based on access patterns |
 
-### Indexinator Hibernate Extension 
+#### Indexinator Hibernate Extension 
 
 A ServiceLoader-based provider (`RequirementMappingResolverProvider`) that maps JPA entity/property requirements to actual table/column names using Hibernate's metamodel API, enabling accurate schema validation.
 
-## Getting Started
+### Unselectinator
 
-### Prerequisites
+The core library provides a tracker-based interceptor that detects N+1 select patterns at runtime by monitoring Entity Manager loads and Spring Data repository method executions and the resulting SQL statements.
+Wraps repository methods and tracks entity loads to identify when multiple queries are issued for related entities, indicating potential N+1 issues.
+
+#### Unselectinator Hibernate Extension
+
+## Prerequisites
 
 - Java 17 or higher
 - Maven 3.6+
@@ -77,7 +82,11 @@ A ServiceLoader-based provider (`RequirementMappingResolverProvider`) that maps 
 
 Building and running the tests is just plain Maven.
 
-## Publishing
+## Development Notes
+
+### Publishing
+
+(just a note to self, I do this so rarely I forget the exact steps)
 
 Publishing is configured in `pom.xml` through a `release` profile that enables `org.sonatype.central:central-publishing-maven-plugin`.
 
@@ -100,12 +109,18 @@ Add Central Portal credentials to `~/.m2/settings.xml` using the same server id 
 ### Publish a SNAPSHOT
 
 1. Keep the project version as `*-SNAPSHOT` (for example `1.0.0-SNAPSHOT`).
-2. Run deploy with the `release` profile:
+2. Ensure SNAPSHOTs are enabled for your namespace in the Central Portal.
+3. Run deploy with the `release` profile:
 
 ```zsh
 cd jpa_tripwire
 ./mvnw -Prelease -DskipTests -DskipITs deploy
 ```
+
+Notes from Central Portal SNAPSHOT docs:
+- SNAPSHOT publishing skips the normal Central validation checks.
+- SNAPSHOTs are not permanent and can be cleaned up by Central over time.
+- If you see `Skipping Central Snapshot Publishing ... at user's request`, remove `-DskipPublishing=true` from your command.
 
 ### Publish a release
 
@@ -118,5 +133,5 @@ cd jpa_tripwire
 ./mvnw -Prelease -DskipTests -DskipITs deploy
 ```
 
-Test modules (`jpa-tripwire-test-*`) are always excluded from publishing via `<maven.deploy.skip>true</maven.deploy.skip>` in `jpa-tripwire-test-parent/pom.xml`. Only the four library modules are ever deployed.
+Test modules (`jpa-tripwire-test-*`) are excluded from the Central bundle via `central-publishing-maven-plugin` `excludeArtifacts` in `pom.xml`.
 
