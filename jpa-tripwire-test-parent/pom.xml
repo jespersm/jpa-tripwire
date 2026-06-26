@@ -17,7 +17,7 @@
 
     <properties>
         <!-- Default Spring Boot line; children can override this property -->
-        <spring.boot.test.version>3.5.11</spring.boot.test.version>
+        <spring.boot.test.version>4.1.0</spring.boot.test.version>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <maven.deploy.skip>true</maven.deploy.skip>
