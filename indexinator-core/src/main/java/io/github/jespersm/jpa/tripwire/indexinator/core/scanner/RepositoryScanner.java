@@ -4,6 +4,7 @@ import org.reflections.Reflections;
 import org.reflections.scanners.Scanners;
 import org.reflections.util.ClasspathHelper;
 import org.reflections.util.ConfigurationBuilder;
+import org.reflections.util.FilterBuilder;
 import org.springframework.data.repository.Repository;
 
 import java.util.HashSet;
@@ -28,6 +29,7 @@ public class RepositoryScanner {
         Reflections reflections = new Reflections(
                 new ConfigurationBuilder()
                         .setUrls(ClasspathHelper.forPackage(basePackage))
+                        .filterInputsBy(new FilterBuilder().includePackage(basePackage))
                         .setScanners(Scanners.SubTypes)
         );
 
