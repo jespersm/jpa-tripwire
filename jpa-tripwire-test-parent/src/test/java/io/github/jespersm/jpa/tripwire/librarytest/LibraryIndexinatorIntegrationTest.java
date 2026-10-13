@@ -87,6 +87,34 @@ class LibraryIndexinatorIntegrationTest extends AbstractLibraryTripwireTest {
     }
 
     @Test
+    void testIndexinatorFindsNamedJoinTableAndChecksItsForeignKeyIndexes() throws Exception {
+        try (Connection connection = dataSource.getConnection()) {
+            InspectionReport report = new Indexinator().inspect(
+                    connection,
+                    entityManagerFactory,
+                    LIBRARY_ENTITY_CLASSES,
+                    List.of()
+            );
+
+            assertTrue(report.getIssues().stream()
+                            .noneMatch(issue -> issue.type() == IssueType.MISSING_JOIN_TABLE &&
+                                    issue.tableName().equalsIgnoreCase("book_authors")),
+                    () -> "Known join table should be found. Issues were: " + report.getIssues());
+            assertTrue(report.getIssues().stream()
+                            .noneMatch(issue -> issue.type() == IssueType.MISSING_PRIMARY_KEY &&
+                                    issue.tableName().equalsIgnoreCase("book_authors")),
+                    () -> "Known join table should not be reported as missing a primary key. Issues were: " +
+                            report.getIssues());
+            assertTrue(report.getIssues().stream()
+                            .noneMatch(issue -> issue.type() == IssueType.MISSING_JOIN_TABLE_INDEX &&
+                                    issue.tableName().equalsIgnoreCase("book_authors") &&
+                                    issue.columnName().equalsIgnoreCase("book_id")),
+                    () -> "The primary-key index should cover book_authors.book_id. Issues were: " + report.getIssues());
+            assertIssue(report, IssueType.MISSING_JOIN_TABLE_INDEX, "book_authors", "author_id");
+        }
+    }
+
+    @Test
     void testBuilderPatternWithLibraryPackageScanning() throws Exception {
         try (Connection connection = dataSource.getConnection()) {
             InspectionReport report = Indexinator.builder()
