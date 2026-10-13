@@ -1,6 +1,6 @@
 # JPA Tripwire
 
-Tools for inspecting JPA/Hibernate models and databases to detect potential performance issues. Once burned twice shy.
+Tools for inspecting JPA/Hibernate models and databases to detect potential performance issues. Once burned, twice shy.
 
 ## Overview
 
@@ -14,7 +14,7 @@ I built the JPA Tripwire to help developers identify common database performance
 - Missing indexes on frequently queried columns
 - Suboptimal composite indexes
 
-## Unselectinator: How to use spot N+1 selects in integration test
+## Unselectinator: How to spot N+1 selects in integration test
 
 `unselectinator-hibernate` contains Spring configuration beans to enable capturing lazy loads.
 
