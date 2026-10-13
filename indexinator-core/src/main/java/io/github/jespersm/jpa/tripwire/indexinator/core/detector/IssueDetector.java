@@ -136,19 +136,35 @@ public class IssueDetector {
             if (joinTableName == null) {
                 continue;
             }
-            TableSchema schema = schemas.get(joinTableName);
+            TableSchema schema = schemas.get(joinTableName.toUpperCase(Locale.ROOT));
 
             if (schema == null) {
                 // Table doesn't exist - this is a critical issue
                 issues.add(new Issue(
                         IssueSeverity.CRITICAL,
-                        IssueType.MISSING_PRIMARY_KEY,
+                        IssueType.MISSING_JOIN_TABLE,
                         joinTableName,
                         null,
                         "Join table does not exist in database",
                         "Ensure the database schema is generated or updated"
                 ));
                 continue;
+            }
+
+            for (ForeignKeyInfo foreignKey : schema.getForeignKeys()) {
+                String columnName = foreignKey.columnName();
+                if (!schema.hasIndexStartingWithColumn(columnName)) {
+                    issues.add(new Issue(
+                            IssueSeverity.HIGH,
+                            IssueType.MISSING_JOIN_TABLE_INDEX,
+                            joinTableName,
+                            columnName,
+                            String.format("Join table foreign key column '%s' has no index", columnName),
+                            String.format("Create index: CREATE INDEX idx_%s_%s ON %s(%s)",
+                                    joinTableName.toLowerCase(Locale.ROOT), columnName.toLowerCase(Locale.ROOT),
+                                    joinTableName, columnName)
+                    ));
+                }
             }
         }
         return issues;

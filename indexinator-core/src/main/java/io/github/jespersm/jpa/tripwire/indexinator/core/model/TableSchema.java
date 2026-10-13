@@ -67,4 +67,16 @@ public class TableSchema {
                         || index.getColumns().contains(columnName.toLowerCase())
                         || index.getColumns().contains(columnName));
     }
+
+    /**
+     * @param columnName leading column to look up
+     * @return {@code true} when an index can be used to look up the provided column directly
+     */
+    public boolean hasIndexStartingWithColumn(String columnName) {
+        return indexes.stream()
+                .map(IndexInfo::getColumns)
+                .filter(columns -> !columns.isEmpty())
+                .map(columns -> columns.get(0))
+                .anyMatch(column -> column.equalsIgnoreCase(columnName));
+    }
 }

@@ -20,6 +20,11 @@ public enum IssueType {
     MISSING_JOIN_TABLE_INDEX,
 
     /**
+     * Join table declared by a many-to-many relationship is absent from the schema.
+     */
+    MISSING_JOIN_TABLE,
+
+    /**
      * Table without a primary key
      */
     MISSING_PRIMARY_KEY,
