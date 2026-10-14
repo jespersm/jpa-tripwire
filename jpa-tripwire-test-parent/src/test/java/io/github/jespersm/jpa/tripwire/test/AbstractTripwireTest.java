@@ -1,6 +1,7 @@
 package io.github.jespersm.jpa.tripwire.test;
 
 import io.github.jespersm.jpa.tripwire.test.repository.SchoolClassRepository;
+import io.github.jespersm.jpa.tripwire.test.service.SchoolClassService;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.Unselectinator;
 import io.github.jespersm.jpa.tripwire.unselectinator.hibernate.spring.UnselectinatorSpringConfiguration;
 import jakarta.persistence.EntityManager;
@@ -45,6 +46,9 @@ abstract class AbstractTripwireTest {
 
     @Autowired
     protected SchoolClassRepository schoolClassRepository;
+
+    @Autowired
+    protected SchoolClassService schoolClassService;
 
     @Autowired
     protected Unselectinator unselectinator;

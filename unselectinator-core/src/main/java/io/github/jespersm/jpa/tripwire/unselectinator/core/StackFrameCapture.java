@@ -6,7 +6,7 @@ import java.util.List;
 final class StackFrameCapture {
     private static final StackWalker STACK_WALKER = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
     private static final List<String> INFRASTRUCTURE_PREFIXES = List.of(
-            "io.github.jespersm.unselectinator.",
+            "io.github.jespersm.jpa.tripwire.unselectinator.",
             "org.springframework.",
             "org.hibernate.",
             "jakarta.persistence.",

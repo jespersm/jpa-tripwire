@@ -4,6 +4,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.Set;
@@ -39,10 +40,22 @@ public final class ObservedEntityManagerFactory {
      * @return proxied entity manager
      */
     public static EntityManager wrap(EntityManager delegate, EntityLoadTracker tracker) {
+        return wrap(delegate, tracker, EntityManager.class);
+    }
+
+    /**
+     * Wrap an EntityManager while preserving provider or framework interfaces.
+     *
+     * @param delegate original entity manager
+     * @param tracker tracker receiving explicit fetch lifecycle callbacks
+     * @param interfaces interfaces exposed by the proxy, including EntityManager or a subinterface
+     * @return proxied entity manager
+     */
+    public static EntityManager wrap(EntityManager delegate, EntityLoadTracker tracker, Class<?>... interfaces) {
         InvocationHandler handler = new ObservedEntityManagerInvocationHandler(delegate, tracker);
         return (EntityManager) Proxy.newProxyInstance(
-                EntityManager.class.getClassLoader(),
-                new Class<?>[]{EntityManager.class},
+                delegate.getClass().getClassLoader(),
+                interfaces,
                 handler
         );
     }
@@ -53,12 +66,12 @@ public final class ObservedEntityManagerFactory {
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             if (method.getDeclaringClass() == Object.class) {
-                return method.invoke(delegate, args);
+                return invokeDelegate(method, delegate, args);
             }
 
             String methodName = method.getName();
             if (QUERY_CREATION_METHODS.contains(methodName)) {
-                Object result = method.invoke(delegate, args);
+                Object result = invokeDelegate(method, delegate, args);
                 if (result instanceof Query query) {
                     FetchEndpoint endpoint = FetchEndpoints.entityManagerMethod(methodName);
                     return wrapQuery(query, tracker, endpoint, method.getReturnType());
@@ -70,13 +83,21 @@ public final class ObservedEntityManagerFactory {
                 FetchEndpoint endpoint = FetchEndpoints.entityManagerMethod(methodName);
                 tracker.beginExplicitFetch(endpoint);
                 try {
-                    return method.invoke(delegate, args);
+                    return invokeDelegate(method, delegate, args);
                 } finally {
                     tracker.endExplicitFetch();
                 }
             }
 
+            return invokeDelegate(method, delegate, args);
+        }
+    }
+
+    private static Object invokeDelegate(Method method, Object delegate, Object[] args) throws Throwable {
+        try {
             return method.invoke(delegate, args);
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause();
         }
     }
 
@@ -86,19 +107,23 @@ public final class ObservedEntityManagerFactory {
                                     Class<?> declaredReturnType) {
         InvocationHandler handler = (proxy, method, args) -> {
             if (method.getDeclaringClass() == Object.class) {
-                return method.invoke(delegate, args);
+                return invokeDelegate(method, delegate, args);
+            }
+            // Spring Data uses unwrap(null) to retrieve the target of a JDK query proxy.
+            if (method.getName().equals("unwrap") && args != null && args.length == 1 && args[0] == null) {
+                return delegate;
             }
 
             Object result;
             if (QUERY_EXECUTION_METHODS.contains(method.getName())) {
                 tracker.beginExplicitFetch(endpoint);
                 try {
-                    result = method.invoke(delegate, args);
+                    result = invokeDelegate(method, delegate, args);
                 } finally {
                     tracker.endExplicitFetch();
                 }
             } else {
-                result = method.invoke(delegate, args);
+                result = invokeDelegate(method, delegate, args);
             }
 
             if (result == delegate) {
@@ -115,5 +140,3 @@ public final class ObservedEntityManagerFactory {
         );
     }
 }
-
-
