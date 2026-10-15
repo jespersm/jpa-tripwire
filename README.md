@@ -82,3 +82,17 @@ See [`IndexinatorIntegrationTest`](jpa-tripwire-test-parent/src/test/java/io/git
 ### Hibernate Support
 
 Hibernate support is optional, in that a ServiceLoader-based provider (`RequirementMappingResolverProvider`) that maps JPA entity/property requirements to actual table/column names using Hibernate's metamodel API, enabling more accurate schema validation than using the basic introspection based on stock JPA table and schema mappings.
+
+## Publishing releases
+
+The `release` Maven profile generates sources, Javadoc, and PGP signatures before
+publishing to Maven Central. The release workflow imports the signing key using
+`actions/setup-java`. Configure these secrets for the `central-releases` environment:
+
+- `CENTRAL_TOKEN_USER` and `CENTRAL_TOKEN_PASS`: Central Portal token credentials.
+- `GPG_PRIVATE_KEY`: the ASCII-armored private signing key.
+- `GPG_PASSPHRASE`: the signing key's passphrase.
+
+Publish the corresponding public key to a keyserver supported by Central, as
+described in [Central's PGP guide](https://central.sonatype.org/publish/requirements/gpg/).
+The snapshot workflow skips signing and uses only the Central token credentials.
