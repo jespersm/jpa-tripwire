@@ -96,3 +96,10 @@ publishing to Maven Central. The release workflow imports the signing key using
 Publish the corresponding public key to a keyserver supported by Central, as
 described in [Central's PGP guide](https://central.sonatype.org/publish/requirements/gpg/).
 The snapshot workflow skips signing and uses only the Central token credentials.
+
+To retry a failed Central deployment, open **Actions → Release → Run workflow**,
+select `main`, and enter the existing release tag (for example, `v1.0.0`). This
+uses the current workflow from `main` to publish the tagged source without
+creating another GitHub release. The tag must contain the signing configuration,
+and its Maven version must match the tag without the `v` prefix. Only retry a
+version that has not already been published successfully to Central.

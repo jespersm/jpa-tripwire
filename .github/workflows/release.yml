@@ -1,6 +1,12 @@
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release tag to publish (for example, v1.0.0)'
+        required: true
+        type: string
   push:
     branches:
       - main
@@ -15,7 +21,7 @@ concurrency:
 
 jobs:
   release-please:
-    if: github.ref == 'refs/heads/main' && github.ref_protected == true
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.ref_protected == true
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -38,7 +44,11 @@ jobs:
           target-branch: main
 
   publish-release:
-    if: needs.release-please.outputs.release_created == 'true'
+    if: >-
+      always() && !cancelled() &&
+      github.ref == 'refs/heads/main' && github.ref_protected == true &&
+      (github.event_name == 'workflow_dispatch' ||
+       (needs.release-please.result == 'success' && needs.release-please.outputs.release_created == 'true'))
     needs: release-please
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -48,13 +58,15 @@ jobs:
     env:
       CENTRAL_TOKEN_USER: ${{ secrets.CENTRAL_TOKEN_USER }}
       CENTRAL_TOKEN_PASS: ${{ secrets.CENTRAL_TOKEN_PASS }}
+      RELEASE_TAG: ${{ inputs.release_tag || needs.release-please.outputs.release_tag }}
+      RELEASE_VERSION: ${{ needs.release-please.outputs.release_version }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ needs.release-please.outputs.release_tag }}
+          ref: refs/tags/${{ env.RELEASE_TAG }}
           persist-credentials: false
 
       - name: Set up JDK 21
@@ -69,18 +81,19 @@ jobs:
           gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
 
-      - name: Confirm release version
-        run: echo "Publishing release ${{ needs.release-please.outputs.release_version }} (${{ needs.release-please.outputs.release_tag }})"
-
       - name: Verify checked-out release version
         run: |
+          if [[ -z "$RELEASE_VERSION" ]]; then
+            [[ "$RELEASE_TAG" == v* ]] || { echo "Expected a release tag starting with v"; exit 1; }
+            RELEASE_VERSION=${RELEASE_TAG#v}
+          fi
           version=$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)
-          test "$version" = "${{ needs.release-please.outputs.release_version }}"
+          test "$version" = "$RELEASE_VERSION"
+          [[ "$version" != *-SNAPSHOT ]] || { echo "Cannot publish a SNAPSHOT as a release"; exit 1; }
+          echo "Publishing release $version ($RELEASE_TAG)"
 
       - name: Publish release to Central
         run: ./mvnw -B -Prelease -DskipTests deploy
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-
-
 
