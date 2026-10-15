@@ -18,6 +18,8 @@
     <properties>
         <!-- Default Spring Boot line; children can override this property -->
         <spring.boot.test.version>3.5.11</spring.boot.test.version>
+        <spock.version>2.4-M6-groovy-4.0</spock.version>
+        <groovy.version>4.0.26</groovy.version>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <maven.deploy.skip>true</maven.deploy.skip>
@@ -76,6 +78,21 @@
                 <groupId>org.testcontainers</groupId>
                 <artifactId>junit-jupiter</artifactId>
                 <version>1.21.4</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.groovy</groupId>
+                <artifactId>groovy</artifactId>
+                <version>${groovy.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.spockframework</groupId>
+                <artifactId>spock-core</artifactId>
+                <version>${spock.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.spockframework</groupId>
+                <artifactId>spock-spring</artifactId>
+                <version>${spock.version}</version>
             </dependency>
 
             <!-- Reflections for scanning -->
