@@ -13,6 +13,13 @@
     <description>Core library for JPA database inspection</description>
 
     <dependencies>
+        <dependency>
+            <groupId>io.github.jespersm.jpa-tripwire</groupId>
+            <artifactId>common-test-models</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- JPA API -->
         <dependency>
             <groupId>jakarta.persistence</groupId>
@@ -45,20 +52,5 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Hibernate ORM for metamodel generation in tests -->
-        <dependency>
-            <groupId>org.hibernate.orm</groupId>
-            <artifactId>hibernate-core</artifactId>
-            <version>6.4.10.Final</version>
-            <scope>test</scope>
-        </dependency>
-
-        <!-- H2 in-memory database for test metamodel -->
-        <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <version>2.2.224</version>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
 </project>

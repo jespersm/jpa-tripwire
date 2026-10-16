@@ -1,7 +1,7 @@
 package io.github.jespersm.jpa.tripwire.indexinator.core.requirement;
 
 import io.github.jespersm.jpa.tripwire.indexinator.core.model.*;
-import io.github.jespersm.jpa.tripwire.indexinator.core.model.fixture.*;
+import io.github.jespersm.jpa.tripwire.test.model.fixture.*;
 import jakarta.persistence.metamodel.Metamodel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

@@ -1,4 +1,4 @@
-package io.github.jespersm.jpa.tripwire.indexinator.core.model.fixture;
+package io.github.jespersm.jpa.tripwire.test.model.fixture;
 
 import jakarta.persistence.*;
 
