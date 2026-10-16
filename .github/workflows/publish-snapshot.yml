@@ -48,10 +48,9 @@ jobs:
 
       - name: Publish SNAPSHOT build to Central
         if: endsWith(steps.project-version.outputs.version, '-SNAPSHOT')
-        run: ./mvnw -B -Prelease -DskipTests deploy
+        run: ./mvnw -B -Prelease -Dgpg.skip=true -DskipTests deploy
 
       - name: Skip non-SNAPSHOT publish
         if: ${{ !endsWith(steps.project-version.outputs.version, '-SNAPSHOT') }}
         run: echo "Skipping snapshot publish because version ${{ steps.project-version.outputs.version }} is not a SNAPSHOT."
-
 

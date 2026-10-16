@@ -4,8 +4,15 @@ import io.github.jespersm.jpa.tripwire.test.entity.SchoolClass;
 import io.github.jespersm.jpa.tripwire.test.repository.SchoolClassRepository;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.LazySelectReport;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.ObservationResult;
+import io.github.jespersm.jpa.tripwire.unselectinator.core.TrackedLoadEvent;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.NoResultException;
+import jakarta.persistence.PersistenceContext;
 import jakarta.transaction.Transactional;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
 
@@ -15,6 +22,12 @@ import static org.junit.jupiter.api.Assertions.*;
  * Integration test for Indexinator using Spring Boot 3.5 + Testcontainers PostgreSQL
  */
 class UnselectinatorIntegrationTest extends AbstractTripwireTest {
+    @PersistenceContext
+    private EntityManager persistenceContextEntityManager;
+
+    @Autowired
+    private EntityManagerFactory entityManagerFactory;
+
     @Test
     @Transactional
     void testLazyLoadingProducesNPlusOneSelects() {
@@ -76,7 +89,7 @@ class UnselectinatorIntegrationTest extends AbstractTripwireTest {
 
     @Test
     @Transactional
-    void testUnselectinatorTracksEntityManagerQueriesToo() {
+    void testUnselectinatorTracksEntityManagerQueriesDirectly() {
         ObservationResult<List<String>> observation = unselectinator.observe(() -> {
             SchoolClass schoolClass = entityManager.createQuery(
                             "select sc from SchoolClass sc where sc.courseCode = :courseCode",
@@ -85,12 +98,120 @@ class UnselectinatorIntegrationTest extends AbstractTripwireTest {
                     .setParameter("courseCode", "CS101")
                     .getSingleResult();
 
-            return schoolClass.getStudents().stream()
-                    .map(student -> student.getFirstName() + " is enrolled in " + student.getClasses().size() + " classes")
-                    .sorted()
-                    .toList();
+            return formatStudents(schoolClass);
         });
 
+        assertExpectedStudents(observation);
+
+        LazySelectReport report = observation.report();
+        assertEquals(4, report.getLazySelectCount(), "Expected one lazy load for students and three for student.classes");
+        assertEquals(4L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+    }
+
+    @Test
+    @Transactional
+    void testUnselectinatorTracksEntityManagerQueriesIndirectly() {
+        ObservationResult<List<String>> observation = unselectinator.observe(() -> {
+            SchoolClass schoolClass = schoolClassService.loadByQuery("CS101");
+            assertTrue(persistenceContextEntityManager.contains(schoolClass),
+                    "Service injection and PersistenceContext must share the transaction's EntityManager");
+
+            return formatStudents(schoolClass);
+        });
+
+        assertExpectedStudents(observation);
+
+        LazySelectReport report = observation.report();
+        assertEquals(4, report.getLazySelectCount(), "Expected one lazy load for students and three for student.classes");
+        assertEquals(4L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+    }
+
+    @Test
+    @Transactional
+    void testUnselectinatorTracksPersistenceContextQueries() {
+        ObservationResult<List<String>> observation = unselectinator.observe(() -> {
+            SchoolClass schoolClass = persistenceContextEntityManager.createQuery(
+                            "select sc from SchoolClass sc where sc.courseCode = :courseCode",
+                            SchoolClass.class)
+                    .setParameter("courseCode", "CS101")
+                    .getSingleResult();
+            return formatStudents(schoolClass);
+        });
+
+        assertExpectedStudents(observation);
+        LazySelectReport report = observation.report();
+        assertEquals(4, report.getLazySelectCount());
+        assertEquals(4L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+        assertTrue(report.loadEvents().stream()
+                .anyMatch(TrackedLoadEvent::explicitFetchLoad), "The initial query must be an explicit fetch");
+    }
+
+    @Test
+    void testUnselectinatorTracksFactoryCreatedEntityManager() {
+        ObservationResult<List<String>> observation = unselectinator.observe(() -> {
+            try (EntityManager applicationEntityManager = entityManagerFactory.createEntityManager()) {
+                SchoolClass schoolClass = applicationEntityManager.createQuery(
+                                "select sc from SchoolClass sc where sc.courseCode = :courseCode",
+                                SchoolClass.class)
+                        .setParameter("courseCode", "CS101")
+                        .getSingleResult();
+                return formatStudents(schoolClass);
+            }
+        });
+
+        assertExpectedStudents(observation);
+        assertEquals(4, observation.report().getLazySelectCount());
+        assertEquals(4L, observation.report()
+                .countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+    }
+
+    @Test
+    @Transactional
+    void testObservedQueryPreservesExceptionsAndClosesFetchScope() {
+        ObservationResult<List<String>> observation = unselectinator.observe(() -> {
+            assertThrows(NoResultException.class, () -> schoolClassService.loadByQuery("missing"));
+            return formatStudents(schoolClassService.loadByQuery("CS101"));
+        });
+
+        assertExpectedStudents(observation);
+        assertEquals(4, observation.report().getLazySelectCount());
+    }
+
+    @Test
+    @Transactional
+    void testUnselectinatorTracksEntityManagerCriteriaBuilderQueries() {
+        ObservationResult<List<String>> observation = unselectinator.observe(() -> {
+
+            SchoolClass schoolClass = schoolClassService.loadByCriteriaBuilder("CS101");
+
+            return formatStudents(schoolClass);
+        });
+
+        assertExpectedStudents(observation);
+
+        LazySelectReport report = observation.report();
+        assertEquals(4, report.getLazySelectCount(), "Expected one lazy load for students and three for student.classes");
+        assertEquals(4L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+    }
+
+    @Test
+    @Transactional
+    void testUnselectinatorTracksEntityManagerCriteriaBuilderQueriesAlso() {
+        ObservationResult<List<String>> observation = unselectinator.observe(() -> {
+
+            SchoolClass schoolClass = schoolClassService.loadByCriteriaBuilder("CS101");
+
+            return formatStudents(schoolClass);
+        });
+
+        assertExpectedStudents(observation);
+
+        LazySelectReport report = observation.report();
+        assertEquals(4, report.getLazySelectCount(), "Expected one lazy load for students and three for student.classes");
+        assertEquals(4L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+    }
+
+    private static void assertExpectedStudents(ObservationResult<List<String>> observation) {
         assertEquals(
                 List.of(
                         "Alice is enrolled in 3 classes",
@@ -99,10 +220,12 @@ class UnselectinatorIntegrationTest extends AbstractTripwireTest {
                 ),
                 observation.value()
         );
+    }
 
-        LazySelectReport report = observation.report();
-        assertEquals(4, report.getLazySelectCount(), "Expected one lazy load for students and three for student.classes");
-        assertEquals(4L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+    private static @NotNull List<String> formatStudents(SchoolClass schoolClass) {
+        return schoolClass.getStudents().stream()
+                .map(student -> student.getFirstName() + " is enrolled in " + student.getClasses().size() + " classes")
+                .sorted()
+                .toList();
     }
 }
-

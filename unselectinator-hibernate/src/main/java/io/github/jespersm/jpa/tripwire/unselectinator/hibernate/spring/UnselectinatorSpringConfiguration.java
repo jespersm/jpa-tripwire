@@ -7,13 +7,17 @@ import io.github.jespersm.jpa.tripwire.unselectinator.hibernate.HibernateUnselec
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.cfg.AvailableSettings;
+import org.aopalliance.intercept.MethodInterceptor;
+import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.InfrastructureProxy;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
+import org.springframework.util.ClassUtils;
 
 /**
  * One-stop Spring {@link Configuration} that wires Unselectinator into a Spring Boot /
@@ -90,6 +94,38 @@ public class UnselectinatorSpringConfiguration {
                 }
                 return bean;
             }
+
+            @Override
+            public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+                // Spring 7 also exposes a shared EntityManager directly as a typed FactoryBean product.
+                if (bean instanceof EntityManager entityManager) {
+                    return ObservedEntityManagerFactory.wrap(entityManager, trackerProvider.getObject(),
+                            ClassUtils.getAllInterfaces(entityManager));
+                }
+                if (bean instanceof EntityManagerFactory) {
+                    ProxyFactory proxyFactory = new ProxyFactory(bean);
+                    // Keep Spring's transaction resource key identical to the original factory.
+                    proxyFactory.addInterface(InfrastructureProxy.class);
+                    proxyFactory.addAdvice((MethodInterceptor) invocation -> {
+                        if (invocation.getMethod().getDeclaringClass() == InfrastructureProxy.class) {
+                            return bean;
+                        }
+                        Object result = invocation.proceed();
+                        // JpaTransactionManager uses EntityManagerFactoryInfo.createNativeEntityManager,
+                        // while shared and application-managed EntityManagers use createEntityManager.
+                        String methodName = invocation.getMethod().getName();
+                        if (result instanceof EntityManager entityManager
+                                && (methodName.equals("createEntityManager")
+                                || methodName.equals("createNativeEntityManager"))) {
+                            return ObservedEntityManagerFactory.wrap(entityManager, trackerProvider.getObject(),
+                                    ClassUtils.getAllInterfaces(entityManager));
+                        }
+                        return result;
+                    });
+                    return proxyFactory.getProxy();
+                }
+                return bean;
+            }
         };
     }
 
@@ -100,4 +136,3 @@ public class UnselectinatorSpringConfiguration {
         return ObservedEntityManagerFactory.wrap(shared, tracker);
     }
 }
-

@@ -16,5 +16,10 @@
 - `UnselectinatorSpringConfiguration`
 - `RepositoryFetchObservationAspect`
 
-For usage and explicit per-test opt-in examples, see the top-level `README.md`.
+The configuration decorates the Spring-managed `EntityManagerFactory` so EntityManagers
+created for transactions, shared injection, and application-managed use record explicit
+fetch endpoints. Service constructor injection and `@PersistenceContext` therefore
+participate without requesting the `observedEntityManager` bean. Repository endpoints
+remain the initiating endpoint when their calls nest EntityManager operations.
 
+For usage and explicit per-test opt-in examples, see the top-level `README.md`.
