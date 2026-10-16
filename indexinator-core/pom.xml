@@ -13,6 +13,13 @@
     <description>Core library for JPA database inspection</description>
 
     <dependencies>
+        <dependency>
+            <groupId>io.github.jespersm.jpa-tripwire</groupId>
+            <artifactId>common-test-models</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- JPA API -->
         <dependency>
             <groupId>jakarta.persistence</groupId>
@@ -44,5 +51,6 @@
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+
     </dependencies>
 </project>
