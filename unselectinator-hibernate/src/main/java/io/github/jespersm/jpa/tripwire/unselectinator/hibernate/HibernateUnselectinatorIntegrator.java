@@ -30,6 +30,9 @@ public class HibernateUnselectinatorIntegrator implements Integrator {
                           BootstrapContext bootstrapContext,
                           SessionFactoryImplementor sessionFactory) {
         EventListenerRegistry registry = sessionFactory.getServiceRegistry().getService(EventListenerRegistry.class);
+        // Observe lazy association fetches before Hibernate's default load listener performs
+        // the database access. POST_LOAD then records the loaded entity instance.
+        registry.prependListeners(EventType.LOAD, listener);
         registry.appendListeners(EventType.POST_LOAD, listener);
         registry.appendListeners(EventType.INIT_COLLECTION, listener);
     }
@@ -43,4 +46,3 @@ public class HibernateUnselectinatorIntegrator implements Integrator {
         // Nothing to clean up.
     }
 }
-
