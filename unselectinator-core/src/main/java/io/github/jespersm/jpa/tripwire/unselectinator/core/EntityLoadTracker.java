@@ -13,6 +13,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Thread-local tracker for explicit fetch scopes, select statements, and lazy loads.
@@ -101,6 +102,51 @@ public class EntityLoadTracker {
         boolean explicitFetchLoad = !trackerState.explicitFetchScopes.isEmpty();
         trackerState.loadEvents.add(new TrackedLoadEvent(reference, null, selectsSincePreviousLoad, explicitFetchLoad));
         trackerState.selectCountAtPreviousLoad = trackerState.totalSelectCount;
+
+        AssociationFetch associationFetch = trackerState.associationFetches.remove(new EntityLoadKey(entityName, entityId));
+        if (associationFetch != null
+                && !explicitFetchLoad
+                && trackerState.lastInitiatingEndpoint != null) {
+            TrackedEntityReference ownerReference = associationFetch.owner() != null
+                    ? trackerState.referencesByInstance.get(associationFetch.owner())
+                    : null;
+            LazySelectEvent event = new LazySelectEvent(
+                    LazyLoadKind.ENTITY_LOAD,
+                    trackerState.lastInitiatingEndpoint,
+                    ownerReference,
+                    associationFetch.relationName(),
+                    reference,
+                    selectsSincePreviousLoad
+            );
+            trackerState.lazySelectEvents.add(event);
+            logger.warn("Lazy entity load detected: {}.{} -> {} triggered after explicit fetch {} ({} select(s) since previous load)",
+                    ownerReference != null ? ownerReference.displayName() : "<unknown-owner>",
+                    associationFetch.relationName() != null ? associationFetch.relationName() : "<unknown-relation>",
+                    reference.displayName(),
+                    trackerState.lastInitiatingEndpoint.displayName(),
+                    selectsSincePreviousLoad);
+        }
+    }
+
+    /**
+     * Mark an entity load initiated by a lazy association, including association information when
+     * the JPA provider can supply it.
+     *
+     * @param entityName entity name requested by Hibernate
+     * @param entityId identifier requested by Hibernate
+     * @param owner association owner, when known
+     * @param relationName association property name, when known
+     */
+    public void recordAssociationFetch(String entityName,
+                                       Object entityId,
+                                       Object owner,
+                                       String relationName) {
+        TrackerState trackerState = state.get();
+        if (!trackerState.observing || entityName == null) {
+            return;
+        }
+        trackerState.associationFetches.put(new EntityLoadKey(entityName, entityId),
+                new AssociationFetch(owner, relationName));
     }
 
     /**
@@ -250,6 +296,7 @@ public class EntityLoadTracker {
         private final List<TrackedLoadEvent> loadEvents = new ArrayList<>();
         private final List<LazySelectEvent> lazySelectEvents = new ArrayList<>();
         private final List<TrackedRelationEdge> relationEdges = new ArrayList<>();
+        private final Map<EntityLoadKey, AssociationFetch> associationFetches = new java.util.HashMap<>();
 
         private int totalSelectCount;
         private int selectCountAtPreviousLoad;
@@ -277,6 +324,13 @@ public class EntityLoadTracker {
             return new LazySelectReport(totalSelectCount, loadEvents, lazySelectEvents, relationEdges);
         }
     }
+
+    private record EntityLoadKey(String entityName, Object entityId) {
+        private EntityLoadKey {
+            Objects.requireNonNull(entityName, "entityName");
+        }
+    }
+
+    private record AssociationFetch(Object owner, String relationName) {
+    }
 }
-
-
