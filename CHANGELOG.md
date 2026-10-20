@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/jespersm/jpa-tripwire/compare/v1.0.1...v1.0.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* Include key and index requirements for @ElementCollection ([#38](https://github.com/jespersm/jpa-tripwire/issues/38)) ([4793bd5](https://github.com/jespersm/jpa-tripwire/commit/4793bd5892205d71d8fdf5cafb0d95925711a475))
+
 ## [1.0.1](https://github.com/jespersm/jpa-tripwire/compare/v1.0.0...v1.0.1) (2026-10-16)
 
 
