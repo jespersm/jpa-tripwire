@@ -76,7 +76,8 @@ public class EntityAnalyzer {
         return field.isAnnotationPresent(OneToOne.class) ||
                field.isAnnotationPresent(OneToMany.class) ||
                field.isAnnotationPresent(ManyToOne.class) ||
-               field.isAnnotationPresent(ManyToMany.class);
+               field.isAnnotationPresent(ManyToMany.class) ||
+               field.isAnnotationPresent(ElementCollection.class);
     }
 
     private boolean isColumn(Field field) {
@@ -156,6 +157,7 @@ public class EntityAnalyzer {
         if (field.isAnnotationPresent(OneToMany.class)) return RelationshipType.ONE_TO_MANY;
         if (field.isAnnotationPresent(ManyToOne.class)) return RelationshipType.MANY_TO_ONE;
         if (field.isAnnotationPresent(ManyToMany.class)) return RelationshipType.MANY_TO_MANY;
+        if (field.isAnnotationPresent(ElementCollection.class)) return RelationshipType.ELEMENT_COLLECTION;
         return null;
     }
 
@@ -197,6 +199,10 @@ public class EntityAnalyzer {
     }
 
     private String getJoinTableName(Field field, String defaultName) {
+        CollectionTable collectionTable = field.getAnnotation(CollectionTable.class);
+        if (collectionTable != null && !collectionTable.name().isEmpty()) {
+            return collectionTable.name();
+        }
         JoinTable joinTable = field.getAnnotation(JoinTable.class);
         if (joinTable != null && !joinTable.name().isEmpty()) {
             return joinTable.name();

@@ -59,7 +59,8 @@ public class MetamodelIndexRequirementCollector {
         for (Attribute<?, ?> attribute : entityType.getAttributes()) {
             Attribute.PersistentAttributeType type = attribute.getPersistentAttributeType();
             if (type != Attribute.PersistentAttributeType.MANY_TO_ONE &&
-                type != Attribute.PersistentAttributeType.ONE_TO_ONE) {
+                type != Attribute.PersistentAttributeType.ONE_TO_ONE &&
+                type != Attribute.PersistentAttributeType.ELEMENT_COLLECTION) {
                 continue;
             }
 
@@ -67,9 +68,9 @@ public class MetamodelIndexRequirementCollector {
                 continue;
             }
 
-            IssueSeverity severity = type == Attribute.PersistentAttributeType.MANY_TO_ONE
-                    ? IssueSeverity.HIGH
-                    : IssueSeverity.MEDIUM;
+            IssueSeverity severity = type == Attribute.PersistentAttributeType.ONE_TO_ONE
+                    ? IssueSeverity.MEDIUM
+                    : IssueSeverity.HIGH;
 
             requirements.add(IndexRequirement.forProperties(
                     entityClass,

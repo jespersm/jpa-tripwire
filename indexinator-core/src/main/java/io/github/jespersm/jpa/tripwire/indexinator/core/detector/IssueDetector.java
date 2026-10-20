@@ -2,6 +2,9 @@ package io.github.jespersm.jpa.tripwire.indexinator.core.detector;
 
 import io.github.jespersm.jpa.tripwire.indexinator.core.model.*;
 import io.github.jespersm.jpa.tripwire.indexinator.core.model.RelationshipMetadata.RelationshipType;
+import io.github.jespersm.jpa.tripwire.indexinator.core.requirement.IndexRequirement;
+import io.github.jespersm.jpa.tripwire.indexinator.core.requirement.RequirementIssueDetector;
+import io.github.jespersm.jpa.tripwire.indexinator.core.requirement.RequirementSource;
 
 import java.util.*;
 
@@ -131,6 +134,14 @@ public class IssueDetector {
         List<Issue> issues = new ArrayList<>();
 
         for (RelationshipMetadata relationship : entity.getRelationships()) {
+            if (relationship.type() == RelationshipType.ELEMENT_COLLECTION) {
+                IndexRequirement requirement = IndexRequirement.forProperties(
+                        entity.getEntityClass(), List.of(relationship.fieldName()), false,
+                        RequirementSource.JPA_RELATIONSHIP, IssueType.MISSING_FK_INDEX, IssueSeverity.HIGH,
+                        "Relationship attribute '" + relationship.fieldName() + "'");
+                issues.addAll(new RequirementIssueDetector().detectIssues(List.of(requirement), schemas));
+                continue;
+            }
             // Only check relationships that have a join column in this table
             String joinTableName = relationship.joinTableName();
             if (joinTableName == null) {

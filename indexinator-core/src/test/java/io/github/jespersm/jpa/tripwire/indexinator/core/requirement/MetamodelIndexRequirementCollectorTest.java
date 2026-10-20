@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * - ManyToMany relationships (no FK-requirement, handled by join table)
  * - Unique columns (unique index requirement)
  * - Embedded types (no requirements)
- * - ElementCollection (no FK requirements)
+ * - ElementCollection (owner FK-index on collection table)
  */
 @DisplayName("MetamodelIndexRequirementCollector: Core Index Requirement Detection")
 class MetamodelIndexRequirementCollectorTest {
@@ -355,8 +355,8 @@ class MetamodelIndexRequirementCollectorTest {
 	}
 
 	@Nested
-	@DisplayName("Embedded Types and ElementCollections: No FK-Index Requirements")
-	class EmbeddedAndElementCollectionNoFKRequirements {
+	@DisplayName("Embedded Types and ElementCollections")
+	class EmbeddedAndElementCollectionRequirements {
 
 		@Test
 		@DisplayName("Customer.billingAddress (Embedded) does NOT generate FK-index requirement")
@@ -392,15 +392,14 @@ class MetamodelIndexRequirementCollectorTest {
 					List.of()
 			);
 
-			// Then: ElementCollection should NOT generate FK-index requirement at entity level
-			// (Join table FK is database-specific)
+			// Then: The owner join column on the collection table needs an index
 			boolean hasCollectionFkReq = requirements.stream()
 					.anyMatch(r -> r.getEntityClass() == Customer.class
 							&& r.getPropertyPaths().contains("shippingAddresses")
 							&& r.getIssueType() == IssueType.MISSING_FK_INDEX);
 
-			assertFalse(hasCollectionFkReq,
-					"ElementCollection is not treated as a relationship that generates FK-index requirements");
+			assertTrue(hasCollectionFkReq,
+					"ElementCollection requires an index on its collection table owner FK");
 		}
 
 		@Test
@@ -426,8 +425,8 @@ class MetamodelIndexRequirementCollectorTest {
 		}
 
 		@Test
-		@DisplayName("OrderComment.tags (ElementCollection) does NOT generate FK-index requirement at entity level")
-		void elementCollectionTagsDoesNotRequireFKAtEntity() {
+		@DisplayName("OrderComment.tags (ElementCollection) requires FK-index on collection table")
+		void elementCollectionTagsRequiresOwnerFKIndex() {
 			// Given: OrderComment has ElementCollection of String tags
 			// When: Collecting requirements
 
@@ -437,14 +436,14 @@ class MetamodelIndexRequirementCollectorTest {
 					List.of()
 			);
 
-			// Then: ElementCollection does NOT generate FK-index requirement at entity level
+			// Then: The owner join column on the collection table needs an index
 			boolean hasCollectionFkReq = requirements.stream()
 					.anyMatch(r -> r.getEntityClass() == OrderComment.class
 							&& r.getPropertyPaths().contains("tags")
 							&& r.getIssueType() == IssueType.MISSING_FK_INDEX);
 
-			assertFalse(hasCollectionFkReq,
-					"ElementCollection is not treated as a relationship requiring FK-index");
+			assertTrue(hasCollectionFkReq,
+					"ElementCollection requires an index on its collection table owner FK");
 		}
 	}
 
@@ -477,7 +476,7 @@ class MetamodelIndexRequirementCollectorTest {
 
 			// Then: Should have all relationship and unique column requirements
 			// Verify counts by category
-			long manyToOneCount = allRequirements.stream()
+			long highSeverityFkCount = allRequirements.stream()
 					.filter(r -> r.getSeverity() == IssueSeverity.HIGH)
 					.count();
 			long oneToOneCount = allRequirements.stream()
@@ -494,7 +493,8 @@ class MetamodelIndexRequirementCollectorTest {
 			// - LineItem.order
 			// - LineItem.product
 			// - OrderComment.order
-			assertEquals(5, manyToOneCount, "Should have 5 ManyToOne requirements");
+			// Collection owner FKs: Customer.shippingAddresses and OrderComment.tags
+			assertEquals(7, highSeverityFkCount, "Should have 5 ManyToOne and 2 collection owner FK requirements");
 
 			// OneToOne owning side (MEDIUM severity):
 			// - Order.shippingInfo
@@ -506,9 +506,9 @@ class MetamodelIndexRequirementCollectorTest {
 			// - ProductCategory.name
 			assertEquals(3, uniqueCount, "Should have 3 unique column requirements");
 
-			// Total should be 9 (5 + 1 + 3)
-			assertEquals(9, allRequirements.size(),
-					"Should have 9 total requirements (5 ManyToOne + 1 OneToOne + 3 Unique)");
+			// Include both collection-table owner FK requirements.
+			assertEquals(11, allRequirements.size(),
+					"Should have 11 total requirements including 2 ElementCollections");
 		}
 
 		@Test
