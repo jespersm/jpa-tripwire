@@ -3,6 +3,7 @@ package io.github.jespersm.jpa.tripwire.indexinator.core.requirement;
 import io.github.jespersm.jpa.tripwire.indexinator.core.model.Issue;
 import io.github.jespersm.jpa.tripwire.indexinator.core.model.IndexInfo;
 import io.github.jespersm.jpa.tripwire.indexinator.core.model.TableSchema;
+import io.github.jespersm.jpa.tripwire.indexinator.core.model.IssueType;
 import jakarta.persistence.EntityManagerFactory;
 
 import java.util.ArrayList;
@@ -41,7 +42,7 @@ public class RequirementIssueDetector {
 
             List<String> resolvedColumns = mapping.columnNames();
 
-            if (hasCoveringIndex(schema, resolvedColumns)) {
+            if (hasCoveringIndex(schema, resolvedColumns, requirement.getIssueType() == IssueType.MISSING_FK_INDEX)) {
                 continue;
             }
 
@@ -81,7 +82,12 @@ public class RequirementIssueDetector {
         return null;
     }
 
-    private boolean hasCoveringIndex(TableSchema schema, List<String> columns) {
+    private boolean hasCoveringIndex(TableSchema schema, List<String> columns, boolean foreignKey) {
+        if (foreignKey) {
+            return schema.getIndexes().stream().map(IndexInfo::getColumns)
+                    .anyMatch(indexColumns -> indexColumns.size() >= columns.size() &&
+                            containsAllIgnoreCase(indexColumns.subList(0, columns.size()), columns));
+        }
         if (columns.size() == 1) {
             return schema.hasIndexOnColumn(columns.get(0));
         }

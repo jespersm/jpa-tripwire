@@ -3,10 +3,13 @@ package io.github.jespersm.jpa.tripwire.indexinator.hibernate;
 import io.github.jespersm.jpa.tripwire.indexinator.core.requirement.IndexRequirement;
 import io.github.jespersm.jpa.tripwire.indexinator.core.requirement.RequirementMappingResolver;
 import io.github.jespersm.jpa.tripwire.indexinator.core.requirement.ResolvedRequirementMapping;
+import io.github.jespersm.jpa.tripwire.indexinator.core.requirement.RequirementSource;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.metamodel.MappingMetamodel;
 import org.hibernate.persister.entity.AbstractEntityPersister;
 import org.hibernate.persister.entity.EntityPersister;
+import org.hibernate.persister.collection.AbstractCollectionPersister;
+import org.hibernate.type.CollectionType;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -51,6 +54,16 @@ public class HibernateSqlMappingResolver implements RequirementMappingResolver {
                 if (isIdentifierProperty(propertyName)) {
                     propertyColumns = persister.getIdentifierColumnNames();
                 } else {
+                    if (persister.getPropertyType(propertyName) instanceof CollectionType collectionType) {
+                        if (requirement.getSource() != RequirementSource.JPA_RELATIONSHIP ||
+                                requirement.getPropertyPaths().size() != 1 ||
+                                !(mappingMetamodel.findCollectionDescriptor(collectionType.getRole())
+                                        instanceof AbstractCollectionPersister collectionPersister)) {
+                            return null;
+                        }
+                        return new ResolvedRequirementMapping(stripQuotes(collectionPersister.getTableName()),
+                                Arrays.stream(collectionPersister.getKeyColumnNames()).map(this::stripQuotes).toList());
+                    }
                     propertyColumns = persister.getPropertyColumnNames(propertyName);
                 }
             } catch (Exception ex) {
