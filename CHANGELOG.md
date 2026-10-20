@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.1](https://github.com/jespersm/jpa-tripwire/compare/v1.0.0...v1.0.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* **deps:** bump org.apache.maven.plugins:maven-compiler-plugin ([#30](https://github.com/jespersm/jpa-tripwire/issues/30)) ([f010371](https://github.com/jespersm/jpa-tripwire/commit/f010371829aed483f9b7d82f472c039d4b181d78))
+* **deps:** bump org.apache.maven.plugins:maven-surefire-plugin ([#29](https://github.com/jespersm/jpa-tripwire/issues/29)) ([8302474](https://github.com/jespersm/jpa-tripwire/commit/8302474fe44891d84461904338abd3f5f63d2031))
+* **deps:** bump org.codehaus.mojo:build-helper-maven-plugin ([#31](https://github.com/jespersm/jpa-tripwire/issues/31)) ([94455b5](https://github.com/jespersm/jpa-tripwire/commit/94455b57f609ef3dedadcda5e61bea1fae3b5132))
+* **deps:** bump org.postgresql:postgresql from 42.7.13 to 42.7.14 ([#28](https://github.com/jespersm/jpa-tripwire/issues/28)) ([a3ac912](https://github.com/jespersm/jpa-tripwire/commit/a3ac9128554b0291c12fbb1b425cc256accf621e))
+* XxxToOne-fixes are now properly detected. ([#34](https://github.com/jespersm/jpa-tripwire/issues/34)) ([51b609d](https://github.com/jespersm/jpa-tripwire/commit/51b609db0a93db9a1299d2240300316cfac9076b))
+
 ## 1.0.0 (2026-10-14)
 
 
