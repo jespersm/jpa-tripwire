@@ -44,6 +44,16 @@ public class EntityLoadTracker {
         }
     }
 
+    /** @return whether an explicit report is currently being captured */
+    public boolean isObserving() {
+        return state.get().observing;
+    }
+
+    /** @return the original fetch invocation for the active boundary */
+    public FetchOrigin currentFetchOrigin() {
+        return state.get().currentFetchOrigin();
+    }
+
     /**
      * Enter an explicit fetch scope.
      *
@@ -54,7 +64,7 @@ public class EntityLoadTracker {
         if (!trackerState.observing) {
             return;
         }
-        trackerState.explicitFetchScopes.push(endpoint);
+        trackerState.explicitFetchScopes.push(FetchOrigin.root(endpoint));
         trackerState.lastInitiatingEndpoint = trackerState.currentInitiatingEndpoint();
     }
 
@@ -90,6 +100,12 @@ public class EntityLoadTracker {
      * @param entityName entity type name
      */
     public void recordEntityLoad(Object entity, Object entityId, String entityName) {
+        recordEntityLoad(entity, entityId, entityName, List.of());
+    }
+
+    /** Record a load using session-local association candidates supplied by the provider. */
+    public void recordEntityLoad(Object entity, Object entityId, String entityName,
+                                 List<AssociationAttribution> attributions) {
         TrackerState trackerState = state.get();
         if (!trackerState.observing || entity == null) {
             return;
@@ -103,28 +119,14 @@ public class EntityLoadTracker {
         trackerState.loadEvents.add(new TrackedLoadEvent(reference, null, selectsSincePreviousLoad, explicitFetchLoad));
         trackerState.selectCountAtPreviousLoad = trackerState.totalSelectCount;
 
-        AssociationFetch associationFetch = trackerState.associationFetches.remove(new EntityLoadKey(entityName, entityId));
-        if (associationFetch != null
-                && !explicitFetchLoad
-                && trackerState.lastInitiatingEndpoint != null) {
-            TrackedEntityReference ownerReference = associationFetch.owner() != null
-                    ? trackerState.referencesByInstance.get(associationFetch.owner())
-                    : null;
-            LazySelectEvent event = new LazySelectEvent(
-                    LazyLoadKind.ENTITY_LOAD,
-                    trackerState.lastInitiatingEndpoint,
-                    ownerReference,
-                    associationFetch.relationName(),
-                    reference,
-                    selectsSincePreviousLoad
-            );
-            trackerState.lazySelectEvents.add(event);
-            logger.warn("Lazy entity load detected: {}.{} -> {} triggered after explicit fetch {} ({} select(s) since previous load)",
-                    ownerReference != null ? ownerReference.displayName() : "<unknown-owner>",
-                    associationFetch.relationName() != null ? associationFetch.relationName() : "<unknown-relation>",
-                    reference.displayName(),
-                    trackerState.lastInitiatingEndpoint.displayName(),
-                    selectsSincePreviousLoad);
+        AssociationFetch legacy = trackerState.associationFetches.remove(new EntityLoadKey(entityName, entityId));
+        if (!explicitFetchLoad && !attributions.isEmpty()) {
+            recordLazyEvent(trackerState, LazyLoadKind.ENTITY_LOAD, reference, selectsSincePreviousLoad, attributions);
+        } else if (!explicitFetchLoad && legacy != null && trackerState.lastInitiatingEndpoint != null) {
+            TrackedEntityReference owner = trackerState.referencesByInstance.get(legacy.owner());
+            trackerState.lazySelectEvents.add(new LazySelectEvent(LazyLoadKind.ENTITY_LOAD,
+                    trackerState.lastInitiatingEndpoint, owner, legacy.relationName(), reference, selectsSincePreviousLoad,
+                    List.of(), SourceLocation.capture()));
         }
     }
 
@@ -158,6 +160,18 @@ public class EntityLoadTracker {
      * @param role Hibernate role name in the form {@code Entity.relation}
      */
     public void recordCollectionLoad(Object owner, String ownerEntityName, Object ownerId, String role) {
+        recordCollectionLoad(owner, ownerEntityName, ownerId, role, List.of());
+    }
+
+    /** Record a collection load with its original owner provenance. */
+    public void recordCollectionLoad(Object owner, String ownerEntityName, Object ownerId, String role,
+                                     List<AssociationAttribution> attributions) {
+        recordCollectionLoad(owner, ownerEntityName, ownerId, role, attributions, null);
+    }
+
+    /** Provider-supplied edges avoid reflective access to an already-initialized collection. */
+    public void recordCollectionLoad(Object owner, String ownerEntityName, Object ownerId, String role,
+                                     List<AssociationAttribution> attributions, List<TrackedRelationEdge> edges) {
         TrackerState trackerState = state.get();
         if (!trackerState.observing || role == null) {
             return;
@@ -174,16 +188,23 @@ public class EntityLoadTracker {
         trackerState.loadEvents.add(new TrackedLoadEvent(ownerReference, relationName, selectsSincePreviousLoad, explicitFetchLoad));
         trackerState.selectCountAtPreviousLoad = trackerState.totalSelectCount;
 
-        captureRelationEdges(trackerState, owner, ownerReference, relationName);
+        if (edges == null) {
+            captureRelationEdges(trackerState, owner, ownerReference, relationName);
+        } else {
+            trackerState.relationEdges.addAll(edges);
+        }
 
-        if (!explicitFetchLoad && trackerState.lastInitiatingEndpoint != null) {
+        if (!explicitFetchLoad && !attributions.isEmpty()) {
+            recordLazyEvent(trackerState, LazyLoadKind.COLLECTION_LOAD, null, selectsSincePreviousLoad, attributions);
+        } else if (!explicitFetchLoad && trackerState.lastInitiatingEndpoint != null) {
             LazySelectEvent event = new LazySelectEvent(
                     LazyLoadKind.COLLECTION_LOAD,
                     trackerState.lastInitiatingEndpoint,
                     ownerReference,
                     relationName,
                     null,
-                    selectsSincePreviousLoad
+                    selectsSincePreviousLoad,
+                    List.of(), SourceLocation.capture()
             );
             trackerState.lazySelectEvents.add(event);
             logger.warn("Lazy collection load detected: {}.{} triggered after explicit fetch {} ({} select(s) since previous load)",
@@ -192,6 +213,25 @@ public class EntityLoadTracker {
                     trackerState.lastInitiatingEndpoint.displayName(),
                     selectsSincePreviousLoad);
         }
+    }
+
+    private void recordLazyEvent(TrackerState trackerState, LazyLoadKind kind,
+                                 TrackedEntityReference loadedEntity, int selects,
+                                 List<AssociationAttribution> attributions) {
+        // Keep legacy summary fields only when all candidates agree. Never pick the
+        // first owner or the latest fetch to conceal an ambiguous association.
+        var owners = attributions.stream().map(AssociationAttribution::owner).distinct().toList();
+        var relations = attributions.stream().map(AssociationAttribution::relationName).distinct().toList();
+        var endpoints = attributions.stream().map(a -> a.origin().initiatingEndpoint()).distinct().toList();
+        LazySelectEvent event = new LazySelectEvent(kind,
+                endpoints.size() == 1 ? endpoints.get(0) : null,
+                owners.size() == 1 ? owners.get(0) : null,
+                relations.size() == 1 ? relations.get(0) : null,
+                loadedEntity, selects, attributions, SourceLocation.capture());
+        trackerState.lazySelectEvents.add(event);
+        logger.warn("Lazy {} detected: {}.{} ({} select(s) since previous load), triggered at {}, origins={}",
+                kind, event.owner() != null ? event.owner().displayName() : "<ambiguous-owner>",
+                event.relationName(), selects, event.triggerLocation(), attributions);
     }
 
     private void captureRelationEdges(TrackerState trackerState,
@@ -291,7 +331,7 @@ public class EntityLoadTracker {
 
     private static final class TrackerState {
         private final boolean observing;
-        private final Deque<FetchEndpoint> explicitFetchScopes = new ArrayDeque<>();
+        private final Deque<FetchOrigin> explicitFetchScopes = new ArrayDeque<>();
         private final Map<Object, TrackedEntityReference> referencesByInstance = new IdentityHashMap<>();
         private final List<TrackedLoadEvent> loadEvents = new ArrayList<>();
         private final List<LazySelectEvent> lazySelectEvents = new ArrayList<>();
@@ -311,13 +351,18 @@ public class EntityLoadTracker {
         }
 
         private FetchEndpoint currentInitiatingEndpoint() {
-            FetchEndpoint repositoryEndpoint = null;
-            for (FetchEndpoint endpoint : explicitFetchScopes) {
-                if (endpoint.kind() == FetchEndpointKind.REPOSITORY_METHOD) {
-                    repositoryEndpoint = endpoint;
+            FetchOrigin origin = currentFetchOrigin();
+            return origin != null ? origin.initiatingEndpoint() : null;
+        }
+
+        private FetchOrigin currentFetchOrigin() {
+            FetchOrigin repositoryOrigin = null;
+            for (FetchOrigin origin : explicitFetchScopes) {
+                if (origin.endpoint().kind() == FetchEndpointKind.REPOSITORY_METHOD) {
+                    repositoryOrigin = origin;
                 }
             }
-            return repositoryEndpoint != null ? repositoryEndpoint : explicitFetchScopes.peekLast();
+            return repositoryOrigin != null ? repositoryOrigin : explicitFetchScopes.peekLast();
         }
 
         private LazySelectReport snapshot() {

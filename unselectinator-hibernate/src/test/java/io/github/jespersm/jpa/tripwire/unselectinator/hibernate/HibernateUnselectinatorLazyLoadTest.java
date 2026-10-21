@@ -9,6 +9,7 @@ import io.github.jespersm.jpa.tripwire.test.model.fixture.Product;
 import io.github.jespersm.jpa.tripwire.test.model.fixture.ProductCategory;
 import io.github.jespersm.jpa.tripwire.test.model.fixture.ProductReview;
 import io.github.jespersm.jpa.tripwire.test.model.fixture.ShippingInfo;
+import io.github.jespersm.jpa.tripwire.test.callsite.FetchCaller;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.EntityLoadTracker;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.LazyLoadKind;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.LazySelectReport;
@@ -32,6 +33,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 class HibernateUnselectinatorLazyLoadTest {
     private final EntityLoadTracker tracker = new EntityLoadTracker();
@@ -116,6 +120,65 @@ class HibernateUnselectinatorLazyLoadTest {
                     .count());
             assertEquals(4L, report.countLazySelectsByRelation("shippingInfo"));
             assertEquals(4L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+        }
+    }
+
+    @Test
+    void reportOnlyIndexRemembersEachOriginAfterAnUnrelatedFetch() {
+        try (EntityManager entityManager = observedEntityManager()) {
+            var report = unselectinator.observe((Runnable) () -> {
+                var first = entityManager.find(Customer.class, customerIds.get(0));
+                var second = entityManager.createQuery("select c from Customer c where c.id = :id", Customer.class)
+                        .setParameter("id", customerIds.get(1)).getSingleResult();
+                first.getOrders().forEach(order -> order.getShippingInfo().getCarrier());
+                second.getOrders().forEach(order -> order.getShippingInfo().getCarrier());
+            });
+            assertEquals(3, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#find"));
+            assertEquals(3, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+            assertTrue(report.lazySelectEvents().stream().allMatch(event -> !event.attributions().isEmpty()));
+        }
+    }
+
+    @Test
+    void reportOnlyIndexDoesNoAttributionWorkOutsideObservation() {
+        var index = HibernateUnselectinatorEventListener.install(
+                entityManagerFactory.unwrap(org.hibernate.engine.spi.SessionFactoryImplementor.class), tracker);
+        try (var entityManager = entityManagerFactory.createEntityManager()) {
+            entityManager.find(Customer.class, customerIds.get(0)).getOrders()
+                    .forEach(order -> order.getShippingInfo().getCarrier());
+            assertEquals(0, index.cachedMappingCount());
+            assertEquals(0, index.trackedSessionCount());
+        }
+    }
+
+    @Test
+    void capturesTheActualLazyCallerSeparatelyFromTheOriginalFetch() {
+        try (var entityManager = observedEntityManager()) {
+            var report = unselectinator.observe((Runnable) () -> {
+                var customer = FetchCaller.loadCustomer(entityManager, customerIds.get(0));
+                FetchCaller.initializeOrders(customer);
+                customer.getOrders().forEach(FetchCaller::shippingCarrier);
+            });
+            var collection = report.lazySelectEvents().stream()
+                    .filter(event -> event.kind() == LazyLoadKind.COLLECTION_LOAD).findFirst().orElseThrow();
+            assertEquals(FetchCaller.class.getName(), collection.triggerLocation().className());
+            assertEquals("initializeOrders", collection.triggerLocation().methodName());
+            assertEquals("loadCustomer", collection.initiatingEndpoint().callerLocation().methodName());
+
+            var targets = report.lazySelectEvents().stream()
+                    .filter(event -> event.kind() == LazyLoadKind.ENTITY_LOAD).toList();
+            assertEquals(2, targets.size());
+            for (var target : targets) {
+                assertEquals(FetchCaller.class.getName(), target.triggerLocation().className());
+                assertEquals("shippingCarrier", target.triggerLocation().methodName());
+                assertEquals("FetchCaller.java", target.triggerLocation().fileName());
+                assertTrue(target.triggerLocation().lineNumber() > 0);
+                assertEquals("loadCustomer", target.initiatingEndpoint().callerLocation().methodName());
+                assertNotEquals(target.triggerLocation(), target.attributions().get(0).origin().location());
+                assertTrue(report.toString().contains("triggered at " + target.triggerLocation()));
+            }
+            assertSame(targets.get(0).triggerLocation(), targets.get(1).triggerLocation(),
+                    "Repeated lazy loads from one call site should retain one shared location value");
         }
     }
 
