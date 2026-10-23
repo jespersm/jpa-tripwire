@@ -17,7 +17,7 @@
         <!-- Default Spring Boot line; children can override this property -->
         <spring.boot.test.version>3.5.16</spring.boot.test.version>
         <spock.version>2.4-M6-groovy-4.0</spock.version>
-        <groovy.version>4.0.26</groovy.version>
+        <groovy.version>6.0.0</groovy.version>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <maven.deploy.skip>true</maven.deploy.skip>
