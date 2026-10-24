@@ -9,10 +9,11 @@ import org.hibernate.engine.spi.EntityKey;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.event.spi.EventSource;
 import org.hibernate.integrator.spi.Integrator;
-import org.hibernate.metamodel.mapping.EntityAssociationMapping;
 import org.hibernate.service.spi.SessionFactoryServiceRegistry;
 
-import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -22,16 +23,16 @@ import java.util.Objects;
 import java.util.WeakHashMap;
 
 /**
- * Experimental always-on guard for {@code A.bs -> B.c}, with proxy-based lazy to-one
- * associations. Each initialization of the configured collection creates an independent
- * group. No explicit observation or EntityManager decoration is required.
+ * Always-on N+1 guard for entity query results and initialized collections.
+ * Automatic mode discovers each member's mapped to-one and collection associations.
+ * The five-argument configuration retains the original explicitly selected role mode.
  *
  * <p>Reports and enforcement share a session-local association index, cached Hibernate
  * mapping metadata, and fetch origins. Either integration may be registered first.
  */
 public final class CollectionLoadGuard implements Integrator {
     private final Configuration configuration;
-    private final Map<EventSource, Map<EntityKey, List<Group>>> sessions = Collections.synchronizedMap(new WeakHashMap<>());
+    private final Map<EventSource, SessionGroups> sessions = Collections.synchronizedMap(new WeakHashMap<>());
     private HibernateUnselectinatorEventListener index;
 
     public CollectionLoadGuard(Configuration configuration) {
@@ -39,19 +40,33 @@ public final class CollectionLoadGuard implements Integrator {
     }
 
     /**
-     * @param collectionRole Hibernate collection role, normally {@code fully.qualified.A.bs}
-     * @param association direct to-one property on the collection's entity elements
+     * @param collectionRole Hibernate collection role, or null for automatic discovery
+     * @param association member association, or null for automatic discovery
      * @param ratio exclusive upper bound for SQL-producing lazy operations / distinct members
-     * @param minimumGroupSize smallest collection group eligible for enforcement
+     * @param minimumGroupSize smallest source group eligible for enforcement
      * @param minimumLazyLoads smallest number of SQL-producing lazy operations eligible for enforcement
+     * @param includes eligible association owner types; empty includes all
+     * @param excludes excluded owner types; exclusions take precedence
      */
     public record Configuration(String collectionRole, String association, double ratio,
-                                int minimumGroupSize, int minimumLazyLoads) {
+                                int minimumGroupSize, int minimumLazyLoads,
+                                List<Class<?>> includes, List<Class<?>> excludes) {
+        public Configuration(double ratio, int minimumGroupSize, int minimumLazyLoads) {
+            this(null, null, ratio, minimumGroupSize, minimumLazyLoads, List.of(), List.of());
+        }
+
+        public Configuration(String collectionRole, String association, double ratio,
+                             int minimumGroupSize, int minimumLazyLoads) {
+            this(collectionRole, association, ratio, minimumGroupSize, minimumLazyLoads, List.of(), List.of());
+        }
+
         public Configuration {
-            if (collectionRole == null || collectionRole.isBlank()
-                    || association == null || association.isBlank()) {
-                throw new IllegalArgumentException("Collection role and association must be specified");
+            if ((collectionRole == null) != (association == null)
+                    || collectionRole != null && (collectionRole.isBlank() || association.isBlank())) {
+                throw new IllegalArgumentException("Specify both collection role and association, or neither for automatic discovery");
             }
+            includes = List.copyOf(includes);
+            excludes = List.copyOf(excludes);
             if (!Double.isFinite(ratio) || ratio < 0 || ratio > 1) {
                 throw new IllegalArgumentException("Ratio must be between 0 and 1");
             }
@@ -97,46 +112,77 @@ public final class CollectionLoadGuard implements Integrator {
     }
 
     private void loadCompleted(HibernateUnselectinatorEventListener.CompletedLoad load) {
-        var pending = sessions.get(load.session());
-        if (pending == null) {
+        var session = sessions.get(load.session());
+        if (session == null) {
             return;
         }
-        var groups = pending.remove(load.target());
+        var groups = session.pending.remove(load.target());
         if (groups == null || !load.executedSql()) {
             return;
         }
+        var triggerLocation = SourceLocation.capture();
         for (Group group : groups) {
+            group.triggerLocation = triggerLocation;
             group.lazyLoads++;
-            if (group.lazyLoads >= configuration.minimumLazyLoads()
-                    && (double) group.lazyLoads / group.size > configuration.ratio()) {
-                throw new ThresholdExceededException(new Violation(configuration.collectionRole(), group.ownerId,
-                        configuration.association(), group.size, group.lazyLoads, configuration.ratio(), group.origins,
-                        SourceLocation.capture()));
-            }
+            evaluate(group);
         }
     }
 
+    private void evaluate(Group group) {
+        if (group.complete && group.size >= configuration.minimumGroupSize()
+                && group.lazyLoads >= configuration.minimumLazyLoads()
+                && (double) group.lazyLoads / group.size > configuration.ratio()) {
+            throw new ThresholdExceededException(new Violation(group.source, group.ownerId,
+                    group.association, group.size, group.lazyLoads, configuration.ratio(), group.origins,
+                    group.triggerLocation));
+        }
+    }
+
+    private boolean included(Class<?> type) {
+        return configuration.excludes().stream().noneMatch(excluded -> excluded.isAssignableFrom(type))
+                && (configuration.includes().isEmpty()
+                || configuration.includes().stream().anyMatch(included -> included.isAssignableFrom(type)));
+    }
+
     private void collectionLoaded(EventSource session, HibernateUnselectinatorEventListener.CollectionGroup collection) {
-        if (!configuration.collectionRole().equals(collection.role())
-                || collection.members().size() < configuration.minimumGroupSize()) {
+        if (configuration.collectionRole() != null && !configuration.collectionRole().equals(collection.role())) {
             return;
         }
+        if (collection.complete() && collection.members().size() < configuration.minimumGroupSize()) {
+            return;
+        }
+        var state = sessions.computeIfAbsent(session, ignored -> new SessionGroups());
+        var groups = state.groups.computeIfAbsent(collection.identity(), ignored -> new LinkedHashMap<>());
+        var eligible = new LinkedHashMap<String, Set<EntityKey>>();
         for (var member : collection.members().keySet()) {
-            if (!(member.getPersister().findAttributeMapping(configuration.association()) instanceof EntityAssociationMapping)) {
-                throw new IllegalArgumentException("Guard association must be a direct to-one entity property: "
-                        + configuration.association());
+            if (!included(member.getPersister().getMappedClass())) {
+                continue;
+            }
+            for (var attribute : index.attributes(member.getPersister())) {
+                if (configuration.association() == null || configuration.association().equals(attribute.name())) {
+                    eligible.computeIfAbsent(attribute.name(), ignored -> new LinkedHashSet<>()).add(member);
+                }
             }
         }
-        var targets = collection.members().values().stream().flatMap(List::stream)
-                .filter(candidate -> configuration.association().equals(candidate.attribution().relationName()))
-                .map(HibernateUnselectinatorEventListener.PendingAssociation::target).distinct().toList();
-        if (targets.isEmpty()) {
-            return;
+        for (var entry : eligible.entrySet()) {
+            var group = groups.computeIfAbsent(entry.getKey(), association ->
+                    new Group(collection.role(), collection.ownerId(), association, collection.origins()));
+            group.size = entry.getValue().size();
+            group.complete = collection.complete();
+            for (var member : entry.getValue()) {
+                for (var candidate : collection.members().get(member)) {
+                    if (entry.getKey().equals(candidate.attribution().relationName())) {
+                        state.pending.computeIfAbsent(candidate.target(), ignored -> new LinkedHashSet<>()).add(group);
+                    }
+                }
+            }
+            evaluate(group);
         }
-        var pending = sessions.computeIfAbsent(session, key -> new HashMap<>());
-        var group = new Group(collection.ownerId(), collection.members().size(), collection.origins());
-        for (var target : targets) {
-            pending.computeIfAbsent(target, key -> new ArrayList<>()).add(group);
+        if (state.pending.isEmpty() && groups.values().stream().allMatch(group -> group.lazyLoads == 0)) {
+            state.groups.remove(collection.identity());
+            if (state.groups.isEmpty()) {
+                sessions.remove(session);
+            }
         }
     }
 
@@ -151,17 +197,26 @@ public final class CollectionLoadGuard implements Integrator {
         index.clear();
     }
 
-    private static final class Group {
-        private final Object ownerId;
-        private final int size;
-        private final List<FetchOrigin> origins;
-        private int lazyLoads;
+    private static final class SessionGroups {
+        private final Map<Object, Set<Group>> pending = new HashMap<>();
+        private final Map<Object, Map<String, Group>> groups = new HashMap<>();
+    }
 
-        private Group(Object ownerId, int size, List<FetchOrigin> origins) {
+    private static final class Group {
+        private final String source;
+        private final Object ownerId;
+        private final String association;
+        private final List<FetchOrigin> origins;
+        private int size;
+        private int lazyLoads;
+        private SourceLocation triggerLocation;
+        private boolean complete;
+
+        private Group(String source, Object ownerId, String association, List<FetchOrigin> origins) {
+            this.source = source;
             this.ownerId = ownerId;
-            this.size = size;
+            this.association = association;
             this.origins = origins;
         }
     }
-
 }

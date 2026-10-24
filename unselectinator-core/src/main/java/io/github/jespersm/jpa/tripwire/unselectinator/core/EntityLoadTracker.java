@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.BooleanSupplier;
 
 /**
  * Thread-local tracker for explicit fetch scopes, select statements, and lazy loads.
@@ -22,6 +24,29 @@ public class EntityLoadTracker {
     private static final Logger logger = LoggerFactory.getLogger(EntityLoadTracker.class);
 
     private final ThreadLocal<TrackerState> state = ThreadLocal.withInitial(TrackerState::new);
+    private final List<FetchObserver> fetchObservers = new CopyOnWriteArrayList<>();
+
+    @FunctionalInterface
+    public interface FetchResultListener {
+        void fetched(Object source, Object result, FetchOrigin origin, boolean complete);
+    }
+
+    private record FetchObserver(BooleanSupplier enabled, FetchResultListener listener) {
+    }
+
+    /** Subscribe a provider adapter to explicit fetch results; return its unsubscribe action. */
+    public Runnable onFetchResults(BooleanSupplier enabled, FetchResultListener listener) {
+        var observer = new FetchObserver(enabled, listener);
+        fetchObservers.add(observer);
+        return () -> fetchObservers.remove(observer);
+    }
+
+    public void recordFetchResult(Object source, Object result, FetchOrigin origin, boolean complete) {
+        if (origin != null) {
+            fetchObservers.stream().filter(observer -> observer.enabled().getAsBoolean())
+                    .forEach(observer -> observer.listener().fetched(source, result, origin, complete));
+        }
+    }
 
     /**
      * Start a fresh observation for the current thread.
@@ -61,7 +86,7 @@ public class EntityLoadTracker {
      */
     public void beginExplicitFetch(FetchEndpoint endpoint) {
         TrackerState trackerState = state.get();
-        if (!trackerState.observing) {
+        if (!trackerState.observing && fetchObservers.stream().noneMatch(observer -> observer.enabled().getAsBoolean())) {
             return;
         }
         trackerState.explicitFetchScopes.push(FetchOrigin.root(endpoint));
@@ -73,7 +98,7 @@ public class EntityLoadTracker {
      */
     public void endExplicitFetch() {
         TrackerState trackerState = state.get();
-        if (!trackerState.observing || trackerState.explicitFetchScopes.isEmpty()) {
+        if (trackerState.explicitFetchScopes.isEmpty()) {
             return;
         }
         trackerState.explicitFetchScopes.pop();

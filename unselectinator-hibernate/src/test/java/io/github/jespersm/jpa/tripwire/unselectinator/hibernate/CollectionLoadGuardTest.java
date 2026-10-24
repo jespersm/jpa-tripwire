@@ -16,6 +16,8 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
+import jakarta.persistence.MapKey;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Transient;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -32,6 +34,10 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -383,6 +389,116 @@ class CollectionLoadGuardTest {
         }
     }
 
+    @Test
+    void discoversAssociationsOfQueryResultsWithoutSelectingARole() {
+        startGuard(new CollectionLoadGuard.Configuration(0.5, 6, 2), false);
+        try (var em = ObservedEntityManagerFactory.wrap(factory.createEntityManager(), tracker)) {
+            var rows = em.createQuery("from GuardChild c where c.parent.id = 1 order by c.id", Child.class).getResultList();
+            for (int i = 0; i < 3; i++) rows.get(i).target.getLabel();
+            var failure = assertThrows(CollectionLoadGuard.ThresholdExceededException.class, () -> rows.get(3).target.getLabel());
+            assertEquals("target", failure.violation().association());
+            assertEquals(6, failure.violation().groupSize());
+            assertTrue(failure.violation().collectionRole().startsWith("<query:"));
+            assertFalse(failure.violation().origins().isEmpty());
+        }
+    }
+
+    @Test
+    void cachedEntitiesInTupleResultsEstablishANewQueryGroup() {
+        startGuard(new CollectionLoadGuard.Configuration(0.5, 6, 2), false);
+        try (var em = ObservedEntityManagerFactory.wrap(factory.createEntityManager(), tracker)) {
+            // No query POST_LOAD events will fire for these already-managed owners.
+            for (long id = 100; id <= 105; id++) em.find(Child.class, id);
+            var rows = em.createQuery("select c, c.id from GuardChild c where c.parent.id = 1 order by c.id", Object[].class).getResultList();
+            for (int i = 0; i < 3; i++) ((Child) rows.get(i)[0]).target.getLabel();
+            var failure = assertThrows(CollectionLoadGuard.ThresholdExceededException.class,
+                    () -> ((Child) rows.get(3)[0]).target.getLabel());
+            assertEquals(6, failure.violation().groupSize());
+            assertTrue(failure.violation().collectionRole().startsWith("<query:"));
+        }
+    }
+
+    @Test
+    void discoversCollectionValuedAssociations() {
+        startGuard(new CollectionLoadGuard.Configuration(0.5, 6, 2), false);
+        try (var em = ObservedEntityManagerFactory.wrap(factory.createEntityManager(), tracker)) {
+            var rows = em.createQuery("from GuardTarget t where t.id between 100 and 105 order by t.id", Target.class).getResultList();
+            for (int i = 0; i < 3; i++) rows.get(i).tags.size();
+            var failure = assertThrows(CollectionLoadGuard.ThresholdExceededException.class, () -> rows.get(3).tags.size());
+            assertEquals("tags", failure.violation().association());
+        }
+    }
+
+    @Test
+    void tracksMapValuesAndReadOnlyOwners() {
+        startGuard(new CollectionLoadGuard.Configuration(0.5, 6, 2), false);
+        try (var em = factory.createEntityManager()) {
+            var parent = em.unwrap(Session.class).createQuery("from GuardParent where id = 1", Parent.class).setReadOnly(true).getSingleResult();
+            var rows = new ArrayList<>(parent.childMap.values());
+            assertEquals(6, rows.size());
+            for (int i = 0; i < 3; i++) rows.get(i).target.getLabel();
+            assertThrows(CollectionLoadGuard.ThresholdExceededException.class, () -> rows.get(3).target.getLabel());
+        }
+    }
+
+    @Test
+    void tracksReadOnlyQueryResults() {
+        startGuard(new CollectionLoadGuard.Configuration(0.5, 6, 2), false);
+        try (var em = factory.createEntityManager()) {
+            var rows = em.unwrap(Session.class).createQuery("from GuardChild c where c.parent.id = 1 order by c.id", Child.class).setReadOnly(true).getResultList();
+            for (int i = 0; i < 3; i++) rows.get(i).target.getLabel();
+            assertThrows(CollectionLoadGuard.ThresholdExceededException.class, () -> rows.get(3).target.getLabel());
+        }
+    }
+
+    @Test
+    void fetchJoinedCollectionsStillEstablishMemberGroups() {
+        startGuard(new CollectionLoadGuard.Configuration(0.5, 6, 2), false);
+        try (var em = ObservedEntityManagerFactory.wrap(factory.createEntityManager(), tracker)) {
+            var parent = em.createQuery("from GuardParent p join fetch p.children where p.id = 1", Parent.class).getSingleResult();
+            for (int i = 0; i < 3; i++) parent.children.get(i).target.getLabel();
+            assertThrows(CollectionLoadGuard.ThresholdExceededException.class, () -> parent.children.get(3).target.getLabel());
+        }
+    }
+
+    @Test
+    void fetchJoiningTheAssociationAvoidsAViolation() {
+        startGuard(new CollectionLoadGuard.Configuration(0.5, 6, 2), false);
+        try (var em = ObservedEntityManagerFactory.wrap(factory.createEntityManager(), tracker)) {
+            var rows = em.createQuery("from GuardChild c join fetch c.target where c.parent.id = 1", Child.class).getResultList();
+            assertDoesNotThrow(() -> rows.forEach(child -> child.target.getLabel()));
+        }
+    }
+
+    @Test
+    void streamEnforcementWaitsForItsFinalGroupSize() {
+        startGuard(new CollectionLoadGuard.Configuration(0.5, 6, 2), false);
+        try (var em = ObservedEntityManagerFactory.wrap(factory.createEntityManager(), tracker)) {
+            em.getTransaction().begin();
+            try (var rows = em.createQuery("from GuardChild c where c.parent.id = 1 order by c.id", Child.class).getResultStream()) {
+                var iterator = rows.iterator();
+                for (int i = 0; i < 3; i++) iterator.next().target.getLabel();
+                assertDoesNotThrow(() -> FetchCaller.access(() -> iterator.next().target.getLabel()));
+                iterator.next();
+                iterator.next();
+                var failure = assertThrows(CollectionLoadGuard.ThresholdExceededException.class, iterator::hasNext);
+                assertEquals(6, failure.violation().groupSize());
+                assertEquals(4, failure.violation().lazyLoadCount());
+                assertEquals("access", failure.violation().triggerLocation().methodName());
+            } finally {
+                em.getTransaction().rollback();
+            }
+        }
+    }
+
+    @Test
+    void exclusionsOverrideIncludes() {
+        startGuard(new CollectionLoadGuard.Configuration(null, null, 0.5, 6, 2, List.of(Child.class), List.of(Child.class)), false);
+        try (var em = factory.createEntityManager()) {
+            assertDoesNotThrow(() -> children(em, 1).forEach(child -> child.target.getLabel()));
+        }
+    }
+
     private static List<Child> children(EntityManager em, long parentId) {
         var children = em.find(Parent.class, parentId).children;
         assertEquals(6, children.size());
@@ -394,8 +510,11 @@ class CollectionLoadGuardTest {
     }
 
     private void startGuard(double ratio, int minimumGroupSize, int minimumLazyLoads, boolean guardFirst) {
-        guard = new CollectionLoadGuard(new CollectionLoadGuard.Configuration(
-                ROLE, "target", ratio, minimumGroupSize, minimumLazyLoads));
+        startGuard(new CollectionLoadGuard.Configuration(ROLE, "target", ratio, minimumGroupSize, minimumLazyLoads), guardFirst);
+    }
+
+    private void startGuard(CollectionLoadGuard.Configuration configuration, boolean guardFirst) {
+        guard = new CollectionLoadGuard(configuration);
         var bootstrapBuilder = new BootstrapServiceRegistryBuilder();
         var reportIntegrator = new HibernateUnselectinatorIntegrator(tracker);
         if (guardFirst) {
@@ -449,6 +568,9 @@ class CollectionLoadGuardTest {
         @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL)
         @OrderBy("id")
         private List<Child> children = new ArrayList<>();
+        @OneToMany(mappedBy = "parent")
+        @MapKey(name = "id")
+        private Map<Long, Child> childMap = new HashMap<>();
 
         public List<Child> getChildren() {
             COLLECTION_GETTER_CALLS.incrementAndGet();
@@ -482,6 +604,8 @@ class CollectionLoadGuardTest {
         @Id
         private Long id;
         private String label;
+        @ElementCollection
+        private Set<String> tags = new HashSet<>();
 
         protected Target() {
         }
@@ -489,6 +613,7 @@ class CollectionLoadGuardTest {
         Target(long id, String label) {
             this.id = id;
             this.label = label;
+            tags.add("tag");
         }
 
         public String getLabel() {

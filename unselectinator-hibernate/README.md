@@ -72,11 +72,12 @@ reports remain independent of the guard.
 ## Shared association cache and fetch origins
 
 The guard and report integration share one `HibernateUnselectinatorEventListener`
-per SessionFactory. It caches to-one mapping metadata once per entity mapping and
+per SessionFactory. It caches to-one and collection mapping metadata once per entity mapping and
 builds a reverse index from unresolved target keys to candidate owner associations.
 Lookup during a lazy load visits those candidates rather than scanning all managed
 entities or inspecting annotated fields. Loaded-state snapshots support field,
-property, and XML mappings without invoking application getters. Collection report
+property, and XML mappings without invoking application getters. Read-only entities
+without snapshots use Hibernate accessors for initialized properties. Collection report
 edges come directly from Hibernate's initialized collection as well.
 
 Each indexed relationship carries a `FetchOrigin`: a fetch invocation ID, its known
@@ -110,24 +111,30 @@ edges. The index retains entity keys and immutable provenance, never managed ent
 instances. Mapping metadata is shared across sessions and cleared with the factory.
 When only report mode is installed, attribution remains inactive outside `observe(...)`.
 
-## Prototype limits
+## Always-on MVP
 
-This prototype covers initialized entity collections such as lists and sets, followed
-by a configured **direct, proxy-based to-one** property. It does not yet cover query
-result groups, maps, read-only entities without loaded-state snapshots, enhanced
-lazy attributes, collection-valued child properties, or includes/excludes and Spring
-annotation configuration. Groups are captured when `INIT_COLLECTION` completes;
-collections populated by a fetch join do not establish a group. It does not infer
-which owner accessed a shared target: a target load contributes once to each group
-that references it. The JDBC counter measures successful load operations containing
-statement executions, rather than classifying individual SQL statements; custom load
-callbacks that perform unrelated JDBC work need further investigation. Long-lived
-sessions would also need configurable tracking limits before general always-on use.
+The Spring entry point is `@EnableUnselectinatorAlwaysOn`, with automatic to-one
+and collection association discovery, ratio/minimum thresholds, and entity
+includes/excludes. The three-argument `CollectionLoadGuard.Configuration` enables
+this automatic mode for native bootstrapping; the five-argument form above retains
+explicit collection-role/property selection.
+
+Entity query results and fetch-joined collections establish groups too. Maps use
+their entity values. Read-only mappings use initialized Hibernate property accessors
+when no loaded snapshot exists. Identifiable enhanced entity proxies are indexed;
+unfetched attributes without identifiable targets are not. Wrapped streams defer
+enforcement until exhaustion or close.
+
+See the root [Unselectinator documentation](../README.md#always-on-enforcement) for
+the annotation example, shared Spring Boot 3.5/4 demo, counting semantics, and the
+[deliberately deferred features and remaining limitations](../README.md#always-on-mvp-limitations).
+In particular, tracking limits and individual SQL classification are not part of
+this MVP; raw query boundaries and mutable cohorts have limited coverage.
 
 Run the focused H2 integration tests without Docker:
 
 ```sh
 ./mvnw -pl unselectinator-hibernate -am test \
-  -Dtest=CollectionLoadGuardTest,HibernateUnselectinatorLazyLoadTest \
+  -Dtest=CollectionLoadGuardTest,HibernateUnselectinatorLazyLoadTest,EnhancedAlwaysOnTest \
   -Dsurefire.failIfNoSpecifiedTests=false
 ```

@@ -6,6 +6,16 @@ import io.github.jespersm.jpa.tripwire.unselectinator.core.FetchOrigin;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.TrackedEntityReference;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.TrackedRelationEdge;
 import org.hibernate.SessionEventListener;
+import org.hibernate.Hibernate;
+import org.hibernate.bytecode.enhance.spi.interceptor.EnhancementAsProxyLazinessInterceptor;
+import org.hibernate.engine.spi.PersistentAttributeInterceptable;
+import org.hibernate.engine.spi.CollectionKey;
+import org.hibernate.collection.spi.PersistentCollection;
+import org.hibernate.metamodel.mapping.AttributeMapping;
+import org.hibernate.metamodel.mapping.PluralAttributeMapping;
+import org.hibernate.query.spi.QueryImplementor;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Tuple;
 import org.hibernate.engine.spi.EntityEntry;
 import org.hibernate.engine.spi.EntityKey;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
@@ -47,6 +57,8 @@ import java.util.stream.Stream;
 public class HibernateUnselectinatorEventListener implements PostLoadEventListener,
         InitializeCollectionEventListener, LoadEventListener {
     private final List<EntityLoadTracker> trackers = new ArrayList<>();
+    private final List<Runnable> subscriptions = new ArrayList<>();
+    private SessionFactoryImplementor factory;
     private final Map<EntityPersister, List<AssociationAttribute>> metadata = new ConcurrentHashMap<>();
     private final Map<EventSource, SessionState> sessions = Collections.synchronizedMap(new WeakHashMap<>());
     private final List<BiConsumer<EventSource, CollectionGroup>> collectionObservers = new ArrayList<>();
@@ -57,7 +69,7 @@ public class HibernateUnselectinatorEventListener implements PostLoadEventListen
 
     public HibernateUnselectinatorEventListener(EntityLoadTracker tracker) {
         if (tracker != null) {
-            trackers.add(tracker);
+            attach(tracker);
         }
     }
 
@@ -67,12 +79,13 @@ public class HibernateUnselectinatorEventListener implements PostLoadEventListen
         for (var listener : registry.getEventListenerGroup(EventType.POST_LOAD).listeners()) {
             if (listener instanceof HibernateUnselectinatorEventListener existing) {
                 if (tracker != null && !existing.trackers.contains(tracker)) {
-                    existing.trackers.add(tracker);
+                    existing.attach(tracker);
                 }
                 return existing;
             }
         }
         var listener = new HibernateUnselectinatorEventListener(tracker);
+        listener.factory = factory;
         var loads = new ArrayList<LoadEventListener>();
         registry.getEventListenerGroup(EventType.LOAD).listeners().forEach(loads::add);
         listener.loadDelegates = List.copyOf(loads);
@@ -102,6 +115,11 @@ public class HibernateUnselectinatorEventListener implements PostLoadEventListen
         return listener;
     }
 
+    private void attach(EntityLoadTracker tracker) {
+        trackers.add(tracker);
+        subscriptions.add(tracker.onFetchResults(this::enabled, this::fetchResult));
+    }
+
     void observeCollections(BiConsumer<EventSource, CollectionGroup> observer) {
         collectionObservers.add(observer);
     }
@@ -120,6 +138,9 @@ public class HibernateUnselectinatorEventListener implements PostLoadEventListen
 
     @Override
     public void onLoad(LoadEvent event, LoadType loadType) {
+        if (loadType == IMMEDIATE_LOAD) {
+            drainQueries(event.getSession());
+        }
         var state = sessions.get(event.getSession());
         long executionsBefore = state != null ? state.executions : 0;
         boolean lazy = state != null && loadType == IMMEDIATE_LOAD;
@@ -163,6 +184,10 @@ public class HibernateUnselectinatorEventListener implements PostLoadEventListen
                 return pending.isEmpty() ? null : pending;
             });
         }
+        boolean enhancedLazy = !attributions.isEmpty() && state.lazyLoadDepth == 0
+                && StackWalker.getInstance().walk(frames -> frames.anyMatch(frame ->
+                frame.getClassName().startsWith("org.hibernate.bytecode.enhance.spi.interceptor.")
+                        && (frame.getMethodName().equals("forceInitialize") || frame.getMethodName().equals("handleRead"))));
         List<FetchOrigin> origins;
         FetchOrigin activeOrigin = currentOrigin();
         if (!state.collectionOrigins.isEmpty()) {
@@ -172,14 +197,28 @@ public class HibernateUnselectinatorEventListener implements PostLoadEventListen
         } else if (!attributions.isEmpty()) {
             origins = attributions.stream().map(AssociationAttribution::origin).distinct().toList();
         } else {
-            origins = List.of(FetchOrigin.root(null));
+            origins = List.of(state.queries.computeIfAbsent(state.executions,
+                    ignored -> new QueryBatch(FetchOrigin.root(null))).origin);
+
         }
         state.origins.put(key, origins);
         var entry = session.getPersistenceContextInternal().getEntry(event.getEntity());
         indexOwner(session, state, entry, origins);
+        if (state.collectionOrigins.isEmpty() && state.lazyLoadDepth == 0 && !enhancedLazy) {
+            if (state.explicitQueries.isEmpty()) {
+                var batch = state.queries.computeIfAbsent(state.executions, ignored -> new QueryBatch(origins.get(0)));
+                batch.members.add(key);
+            } else {
+                state.provisionalStreamMembers.add(key);
+            }
+        }
         for (var tracker : trackers) {
             tracker.recordEntityLoad(event.getEntity(), event.getId(), event.getPersister().getEntityName(),
-                    state.lazyLoadDepth > 0 ? attributions : List.of());
+                    state.lazyLoadDepth > 0 || enhancedLazy ? attributions : List.of());
+        }
+        if (enhancedLazy) {
+            var load = new CompletedLoad(session, key, !state.cacheHit);
+            loadObservers.forEach(observer -> observer.accept(load));
         }
     }
 
@@ -190,7 +229,9 @@ public class HibernateUnselectinatorEventListener implements PostLoadEventListen
             return;
         }
         var session = event.getSession();
+        drainQueries(session);
         var state = state(session);
+        long executionsBefore = state.executions;
         var collectionEntry = session.getPersistenceContextInternal().getCollectionEntry(event.getCollection());
         var ownerPersister = collectionEntry.getLoadedPersister().getOwnerEntityPersister();
         var ownerKey = session.generateEntityKey(collectionEntry.getLoadedKey(), ownerPersister);
@@ -208,39 +249,18 @@ public class HibernateUnselectinatorEventListener implements PostLoadEventListen
             if (!event.getCollection().wasInitialized()) {
                 return;
             }
-            // Scan only this completed collection, never the persistence context. Reuse
-            // the same cached metadata and outgoing associations as POST_LOAD indexing.
-            var members = new LinkedHashMap<EntityKey, List<PendingAssociation>>();
-            var edges = new ArrayList<TrackedRelationEdge>();
-            var elements = event.getCollection().entries(collectionEntry.getLoadedPersister());
-            while (elements.hasNext()) {
-                Object element = elements.next();
-                var proxy = HibernateProxy.extractLazyInitializer(element);
-                if (proxy != null) {
-                    element = proxy.getImplementation(session);
-                }
-                var entry = session.getPersistenceContextInternal().getEntry(element);
-                if (entry != null && !members.containsKey(entry.getEntityKey())) {
-                    // A managed entity can occur in several collections. Preserve
-                    // every source instead of replacing it with the latest group.
-                    var previousOrigins = state.origins.getOrDefault(entry.getEntityKey(), List.of());
-                    var memberOrigins = Stream.concat(previousOrigins.stream(), origins.stream())
-                            .distinct().toList();
-                    if (!memberOrigins.equals(previousOrigins)) {
-                        state.origins.put(entry.getEntityKey(), memberOrigins);
-                        indexOwner(session, state, entry, memberOrigins);
-                    }
-                    members.put(entry.getEntityKey(), state.byOwner.getOrDefault(entry.getEntityKey(), List.of()));
-                    edges.add(new TrackedRelationEdge(owner, relation, reference(entry.getEntityKey(), element)));
-                }
-            }
+            var key = new CollectionKey(collectionEntry.getLoadedPersister(), collectionEntry.getLoadedKey());
+            state.byTarget.remove(key);
+            publishCollection(session, event.getCollection(), origins, new LinkedHashSet<>());
             var attributions = origins.stream().map(origin -> new AssociationAttribution(owner, relation, origin)).toList();
+            var edges = collectionMembers(session, event.getCollection()).keySet().stream()
+                    .map(member -> new TrackedRelationEdge(owner, relation, reference(member, null))).toList();
             for (var tracker : trackers) {
                 tracker.recordCollectionLoad(event.getAffectedOwnerOrNull(), ownerPersister.getEntityName(),
                         collectionEntry.getLoadedKey(), role, attributions, edges);
             }
-            var group = new CollectionGroup(role, collectionEntry.getLoadedKey(), Map.copyOf(members), origins);
-            collectionObservers.forEach(observer -> observer.accept(session, group));
+            var load = new CompletedLoad(session, key, state.executions > executionsBefore);
+            loadObservers.forEach(observer -> observer.accept(load));
         } finally {
             state.collectionOrigins.pop();
         }
@@ -251,39 +271,229 @@ public class HibernateUnselectinatorEventListener implements PostLoadEventListen
                 .filter(java.util.Objects::nonNull).findFirst().orElse(null);
     }
 
+    List<AssociationAttribute> attributes(EntityPersister persister) {
+        return metadata.computeIfAbsent(persister, descriptor -> {
+            var attributes = new ArrayList<AssociationAttribute>();
+            for (int i = 0; i < descriptor.getNumberOfAttributeMappings(); i++) {
+                var mapping = descriptor.getAttributeMapping(i);
+                if (mapping instanceof EntityAssociationMapping || mapping instanceof PluralAttributeMapping) {
+                    attributes.add(new AssociationAttribute(mapping.getAttributeName(), mapping.getStateArrayPosition(), mapping));
+                }
+            }
+            return List.copyOf(attributes);
+        });
+    }
+
+    private Object value(EventSource session, EntityEntry entry, AssociationAttribute attribute) {
+        if (entry.getLoadedState() != null) {
+            return entry.getLoadedState()[attribute.position()];
+        }
+        // Read-only entities have no dirty-checking snapshot. Access only properties
+        // Hibernate already considers initialized; never force an enhanced lazy field.
+        Object entity = session.getPersistenceContextInternal().getEntity(entry.getEntityKey());
+        return entity != null && Hibernate.isPropertyInitialized(entity, attribute.name())
+                ? attribute.mapping().getValue(entity) : null;
+    }
+
     private void indexOwner(EventSource session, SessionState state, EntityEntry entry, List<FetchOrigin> origins) {
-        if (entry == null || entry.getLoadedState() == null) {
+        if (entry == null) {
             return;
         }
         var ownerKey = entry.getEntityKey();
         removeOwner(state, ownerKey);
         var owner = TrackedEntityReference.synthetic(entry.getPersister().getEntityName(), entry.getId());
         var outgoing = new ArrayList<PendingAssociation>();
-        for (var attribute : metadata.computeIfAbsent(entry.getPersister(), persister -> {
-            var attributes = new ArrayList<AssociationAttribute>();
-            for (int i = 0; i < persister.getNumberOfAttributeMappings(); i++) {
-                var mapping = persister.getAttributeMapping(i);
-                if (mapping instanceof EntityAssociationMapping) {
-                    attributes.add(new AssociationAttribute(mapping.getAttributeName(), mapping.getStateArrayPosition()));
+        for (var attribute : attributes(entry.getPersister())) {
+            Object value = value(session, entry, attribute);
+            Object targetKey = null;
+            var proxy = HibernateProxy.extractLazyInitializer(value);
+            if (proxy != null && proxy.isUninitialized()) {
+                targetKey = session.generateEntityKey(proxy.getInternalIdentifier(),
+                        session.getFactory().getMappingMetamodel().getEntityDescriptor(proxy.getEntityName()));
+            } else if (value instanceof PersistentAttributeInterceptable enhanced
+                    && enhanced.$$_hibernate_getInterceptor() instanceof EnhancementAsProxyLazinessInterceptor interceptor
+                    && !interceptor.isInitialized()) {
+                targetKey = interceptor.getEntityKey();
+            } else if (value instanceof PersistentCollection<?> collection && !collection.wasInitialized()) {
+                var ce = session.getPersistenceContextInternal().getCollectionEntry(collection);
+                if (ce != null && ce.getLoadedPersister() != null) {
+                    targetKey = new CollectionKey(ce.getLoadedPersister(), ce.getLoadedKey());
                 }
             }
-            return List.copyOf(attributes);
-        })) {
-            var target = HibernateProxy.extractLazyInitializer(entry.getLoadedState()[attribute.position()]);
-            if (target == null || !target.isUninitialized()) {
-                continue;
-            }
-            var targetKey = session.generateEntityKey(target.getInternalIdentifier(),
-                    session.getFactory().getMappingMetamodel().getEntityDescriptor(target.getEntityName()));
-            for (var origin : origins) {
-                var attribution = new AssociationAttribution(owner, attribute.name(), origin.through(owner, attribute.name()));
-                outgoing.add(new PendingAssociation(targetKey, attribution));
-                state.byTarget.computeIfAbsent(targetKey, key -> new LinkedHashSet<>()).add(attribution);
+            if (targetKey != null) {
+                for (var origin : origins) {
+                    var attribution = new AssociationAttribution(owner, attribute.name(), origin.through(owner, attribute.name()));
+                    outgoing.add(new PendingAssociation(targetKey, attribution));
+                    state.byTarget.computeIfAbsent(targetKey, ignored -> new LinkedHashSet<>()).add(attribution);
+                }
             }
         }
         if (!outgoing.isEmpty()) {
             state.byOwner.put(ownerKey, List.copyOf(outgoing));
         }
+    }
+
+    private Map<EntityKey, List<PendingAssociation>> collectionMembers(EventSource session, PersistentCollection<?> collection) {
+        var ce = session.getPersistenceContextInternal().getCollectionEntry(collection);
+        var members = new LinkedHashMap<EntityKey, List<PendingAssociation>>();
+        var elements = collection.entries(ce.getLoadedPersister());
+        while (elements.hasNext()) {
+            Object element = elements.next();
+            if (element instanceof Map.Entry<?, ?> mapEntry) {
+                element = mapEntry.getValue();
+            }
+            EntityKey key = entityKey(session, element);
+            if (key != null) {
+                members.putIfAbsent(key, List.of());
+            }
+        }
+        return members;
+    }
+
+    private void publishCollection(EventSource session, PersistentCollection<?> collection, List<FetchOrigin> origins,
+                                   Set<CollectionKey> visited) {
+        var ce = session.getPersistenceContextInternal().getCollectionEntry(collection);
+        if (ce == null || !collection.wasInitialized()) {
+            return;
+        }
+        var key = new CollectionKey(ce.getLoadedPersister(), ce.getLoadedKey());
+        if (!visited.add(key)) {
+            return;
+        }
+        var members = collectionMembers(session, collection);
+        publishGroup(session, key, collection.getRole(), ce.getLoadedKey(), members.keySet(), origins, true, visited);
+    }
+
+    private void publishGroup(EventSource session, Object identity, String source, Object ownerId,
+                              Set<EntityKey> keys, List<FetchOrigin> origins, boolean complete, Set<CollectionKey> visited) {
+        var state = state(session);
+        var members = new LinkedHashMap<EntityKey, List<PendingAssociation>>();
+        for (var key : keys) {
+            var entry = session.getPersistenceContextInternal().getEntry(
+                    session.getPersistenceContextInternal().getEntity(key));
+            if (entry == null) {
+                continue;
+            }
+            var previous = state.origins.getOrDefault(key, List.of());
+            var combined = Stream.concat(previous.stream(), origins.stream()).distinct().toList();
+            state.origins.put(key, combined);
+            indexOwner(session, state, entry, combined);
+            members.put(key, state.byOwner.getOrDefault(key, List.of()));
+        }
+        var group = new CollectionGroup(identity, source, ownerId, Map.copyOf(members), origins, complete);
+        collectionObservers.forEach(observer -> observer.accept(session, group));
+        // Fetch joins initialize collections without INIT_COLLECTION. Inspect only
+        // mapped collections of this group's members, using a visited set for cycles.
+        for (var key : keys) {
+            var entry = session.getPersistenceContextInternal().getEntry(session.getPersistenceContextInternal().getEntity(key));
+            if (entry == null) {
+                continue;
+            }
+            for (var attribute : attributes(entry.getPersister())) {
+                if (attribute.mapping() instanceof PluralAttributeMapping
+                        && value(session, entry, attribute) instanceof PersistentCollection<?> collection
+                        && collection.wasInitialized()) {
+                    var owner = reference(key, null);
+                    var childOrigins = origins.stream().map(origin -> origin.through(owner, attribute.name())).toList();
+                    publishCollection(session, collection, childOrigins, visited);
+                }
+            }
+        }
+    }
+
+    private EntityKey entityKey(EventSource session, Object value) {
+        var proxy = HibernateProxy.extractLazyInitializer(value);
+        if (proxy != null) {
+            value = proxy.getImplementation(session);
+        }
+        if (value == null) {
+            return null;
+        }
+        var entry = session.getPersistenceContextInternal().getEntry(value);
+        return entry != null ? entry.getEntityKey() : null;
+    }
+
+    private void resultKeys(EventSource session, Object value, Set<EntityKey> keys) {
+        EntityKey key = entityKey(session, value);
+        if (key != null) {
+            keys.add(key);
+        } else if (value instanceof Iterable<?> values) {
+            values.forEach(element -> resultKeys(session, element, keys));
+        } else if (value instanceof Object[] values) {
+            for (Object element : values) {
+                resultKeys(session, element, keys);
+            }
+        } else if (value instanceof Tuple tuple) {
+            resultKeys(session, tuple.toArray(), keys);
+        } else if (value instanceof Map<?, ?> values) {
+            values.values().forEach(element -> resultKeys(session, element, keys));
+        }
+    }
+
+    private void fetchResult(Object source, Object result, FetchOrigin origin, boolean complete) {
+        EventSource session;
+        if (source instanceof QueryImplementor<?> query && query.getSession() instanceof EventSource eventSource) {
+            session = eventSource;
+        } else if (source instanceof EntityManager em && em.unwrap(org.hibernate.Session.class) instanceof EventSource eventSource) {
+            session = eventSource;
+        } else {
+            return;
+        }
+        if (session.getFactory() != factory || !session.isOpen()) {
+            return;
+        }
+        var state = state(session);
+        var keys = state.explicitQueries.computeIfAbsent(origin.fetchId(), ignored -> new LinkedHashSet<>());
+        state.queries.values().stream().filter(batch -> batch.origin.fetchId() == origin.fetchId())
+                .forEach(batch -> keys.addAll(batch.members));
+        state.queries.values().removeIf(batch -> batch.origin.fetchId() == origin.fetchId());
+        drainQueries(session);
+        resultKeys(session, result, keys);
+        // Include already-managed, initialized to-one values in result graphs too.
+        // This covers fetch joins/entity graphs even when they generate no POST_LOAD.
+        var remaining = new ArrayDeque<>(keys);
+        while (!remaining.isEmpty()) {
+            var key = remaining.pop();
+            var entry = session.getPersistenceContextInternal().getEntry(session.getPersistenceContextInternal().getEntity(key));
+            if (entry != null) {
+                for (var attribute : attributes(entry.getPersister())) {
+                    if (attribute.mapping() instanceof EntityAssociationMapping) {
+                        EntityKey target = entityKey(session, value(session, entry, attribute));
+                        if (target != null && keys.add(target)) {
+                            remaining.add(target);
+                        }
+                    }
+                }
+            }
+        }
+        for (var key : keys) {
+            if (state.provisionalStreamMembers.remove(key)) {
+                state.origins.remove(key);
+            }
+        }
+        publishQuery(session, origin.fetchId(), keys, origin, complete);
+        if (complete) {
+            state.explicitQueries.remove(origin.fetchId());
+        }
+    }
+
+    private void drainQueries(EventSource session) {
+        var state = sessions.get(session);
+        if (state == null || state.queries.isEmpty() || !state.collectionOrigins.isEmpty() || currentOrigin() != null) {
+            return;
+        }
+        var batches = new LinkedHashMap<>(state.queries);
+        state.queries.clear();
+        batches.forEach((id, batch) -> publishQuery(session, -id - 1, batch.members, batch.origin, true));
+    }
+
+    private void publishQuery(EventSource session, long id, Set<EntityKey> keys, FetchOrigin origin, boolean complete) {
+        var types = new LinkedHashMap<String, Set<EntityKey>>();
+        for (var key : keys) {
+            types.computeIfAbsent(key.getEntityName(), ignored -> new LinkedHashSet<>()).add(key);
+        }
+        types.forEach((type, members) -> publishGroup(session, new QueryGroupId(id, type),
+                "<query:" + type + ">", null, members, List.of(origin), complete, new LinkedHashSet<>()));
     }
 
     private void removeOwner(SessionState state, EntityKey owner) {
@@ -321,6 +531,9 @@ public class HibernateUnselectinatorEventListener implements PostLoadEventListen
             state.byOwner.clear();
             state.origins.clear();
             state.collectionOrigins.clear();
+            state.queries.clear();
+            state.explicitQueries.clear();
+            state.provisionalStreamMembers.clear();
         }
         resetObservers.forEach(observer -> observer.accept(session));
         if (closed) {
@@ -331,6 +544,8 @@ public class HibernateUnselectinatorEventListener implements PostLoadEventListen
     void clear() {
         sessions.clear();
         metadata.clear();
+        subscriptions.forEach(Runnable::run);
+        subscriptions.clear();
     }
 
     int cachedMappingCount() {
@@ -341,25 +556,41 @@ public class HibernateUnselectinatorEventListener implements PostLoadEventListen
         return sessions.size();
     }
 
-    record PendingAssociation(EntityKey target, AssociationAttribution attribution) {
+    record PendingAssociation(Object target, AssociationAttribution attribution) {
     }
 
-    record CollectionGroup(String role, Object ownerId, Map<EntityKey, List<PendingAssociation>> members,
-                           List<FetchOrigin> origins) {
+    record CollectionGroup(Object identity, String role, Object ownerId, Map<EntityKey, List<PendingAssociation>> members,
+                           List<FetchOrigin> origins, boolean complete) {
     }
 
-    record CompletedLoad(EventSource session, EntityKey target, boolean executedSql) {
+    record CompletedLoad(EventSource session, Object target, boolean executedSql) {
     }
 
-    private record AssociationAttribute(String name, int position) {
+    record AssociationAttribute(String name, int position, AttributeMapping mapping) {
+    }
+
+    private record QueryGroupId(long invocation, String entityName) {
+    }
+
+    private static final class QueryBatch {
+        private final FetchOrigin origin;
+        private final Set<EntityKey> members = new LinkedHashSet<>();
+
+        private QueryBatch(FetchOrigin origin) {
+            this.origin = origin;
+        }
     }
 
     private final class SessionState implements SessionEventListener {
         private final WeakReference<EventSource> session;
-        private final Map<EntityKey, Set<AssociationAttribution>> byTarget = new HashMap<>();
+        private final Map<Object, Set<AssociationAttribution>> byTarget = new HashMap<>();
         private final Map<EntityKey, List<PendingAssociation>> byOwner = new HashMap<>();
         private final Map<EntityKey, List<FetchOrigin>> origins = new HashMap<>();
         private final Deque<List<FetchOrigin>> collectionOrigins = new ArrayDeque<>();
+        private final Map<Long, QueryBatch> queries = new LinkedHashMap<>();
+        private final Map<Long, Set<EntityKey>> explicitQueries = new HashMap<>();
+        private final Set<EntityKey> provisionalStreamMembers = new LinkedHashSet<>();
+        private boolean cacheHit;
         private long executions;
         private int lazyLoadDepth;
 
@@ -370,6 +601,12 @@ public class HibernateUnselectinatorEventListener implements PostLoadEventListen
         @Override
         public void jdbcExecuteStatementEnd() {
             executions++;
+            cacheHit = false;
+        }
+
+        @Override
+        public void cacheGetEnd(boolean hit) {
+            cacheHit = hit;
         }
 
         @Override
