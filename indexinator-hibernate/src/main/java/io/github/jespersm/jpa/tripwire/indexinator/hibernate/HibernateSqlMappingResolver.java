@@ -6,6 +6,8 @@ import io.github.jespersm.jpa.tripwire.indexinator.core.requirement.ResolvedRequ
 import io.github.jespersm.jpa.tripwire.indexinator.core.requirement.RequirementSource;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.metamodel.MappingMetamodel;
+import org.hibernate.metamodel.mapping.AttributeMapping;
+import org.hibernate.metamodel.mapping.TableDetails;
 import org.hibernate.persister.entity.AbstractEntityPersister;
 import org.hibernate.persister.entity.EntityPersister;
 import org.hibernate.persister.collection.AbstractCollectionPersister;
@@ -43,40 +45,60 @@ public class HibernateSqlMappingResolver implements RequirementMappingResolver {
             return null;
         }
 
-        String tableName = persister.getRootTableName();
+        // With JOINED inheritance the columns of one entity live in several tables, so each column is
+        // resolved together with the table that contains it, instead of assuming the root table.
+        String tableName = null;
         List<String> columns = new ArrayList<>();
 
         for (String propertyPath : requirement.getPropertyPaths()) {
             String propertyName = rootProperty(propertyPath);
-            String[] propertyColumns;
+            List<TableColumn> propertyColumns = new ArrayList<>();
 
             try {
-                if (isIdentifierProperty(propertyName)) {
-                    propertyColumns = persister.getIdentifierColumnNames();
+                if (isIdentifierProperty(persister, propertyName)) {
+                    TableDetails tableDetails = persister.getMappedTableDetails();
+                    for (TableDetails.KeyColumn keyColumn : tableDetails.getKeyDetails().getKeyColumns()) {
+                        propertyColumns.add(new TableColumn(tableDetails.getTableName(), keyColumn.getColumnName()));
+                    }
                 } else {
                     if (persister.getPropertyType(propertyName) instanceof CollectionType collectionType) {
                         if (requirement.getSource() != RequirementSource.JPA_RELATIONSHIP ||
-                                requirement.getPropertyPaths().size() != 1 ||
-                                !(mappingMetamodel.findCollectionDescriptor(collectionType.getRole())
-                                        instanceof AbstractCollectionPersister collectionPersister)) {
+                                requirement.getPropertyPaths().size() != 1) {
+                            // A query through a collection joins via its key columns in another table, which the
+                            // relationship and join-table checks cover. Check the remaining properties only.
+                            continue;
+                        }
+                        if (!(mappingMetamodel.findCollectionDescriptor(collectionType.getRole())
+                                instanceof AbstractCollectionPersister collectionPersister)) {
                             return null;
                         }
                         return new ResolvedRequirementMapping(stripQuotes(collectionPersister.getTableName()),
                                 Arrays.stream(collectionPersister.getKeyColumnNames()).map(this::stripQuotes).toList());
                     }
-                    propertyColumns = persister.getPropertyColumnNames(propertyName);
+                    AttributeMapping attributeMapping = persister.findAttributeMapping(propertyName);
+                    if (attributeMapping == null) {
+                        return null;
+                    }
+                    attributeMapping.forEachSelectable((index, selectable) -> propertyColumns.add(
+                            new TableColumn(selectable.getContainingTableExpression(), selectable.getSelectionExpression())));
                 }
             } catch (Exception ex) {
                 return null;
             }
 
-            if (propertyColumns == null || propertyColumns.length == 0) {
+            if (propertyColumns.isEmpty()) {
                 return null;
             }
 
-            Arrays.stream(propertyColumns)
-                    .map(this::stripQuotes)
-                    .forEach(columns::add);
+            // An index cannot span tables: keep the columns that live in the table of the first property.
+            for (TableColumn column : propertyColumns) {
+                if (tableName == null) {
+                    tableName = column.table();
+                }
+                if (tableName.equals(column.table())) {
+                    columns.add(stripQuotes(column.column()));
+                }
+            }
         }
 
         return columns.isEmpty() ? null : new ResolvedRequirementMapping(stripQuotes(tableName), columns);
@@ -87,8 +109,11 @@ public class HibernateSqlMappingResolver implements RequirementMappingResolver {
         return dotIndex >= 0 ? propertyPath.substring(0, dotIndex) : propertyPath;
     }
 
-    private boolean isIdentifierProperty(String propertyName) {
-        return "id".equals(propertyName);
+    private boolean isIdentifierProperty(AbstractEntityPersister persister, String propertyName) {
+        return propertyName.equals(persister.getIdentifierPropertyName()) || "id".equals(propertyName);
+    }
+
+    private record TableColumn(String table, String column) {
     }
 
     private String stripQuotes(String identifier) {

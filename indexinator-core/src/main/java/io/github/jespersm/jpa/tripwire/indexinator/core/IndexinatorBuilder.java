@@ -3,6 +3,7 @@ package io.github.jespersm.jpa.tripwire.indexinator.core;
 import io.github.jespersm.jpa.tripwire.indexinator.core.model.InspectionReport;
 import io.github.jespersm.jpa.tripwire.indexinator.core.scanner.EntityScanner;
 import io.github.jespersm.jpa.tripwire.indexinator.core.scanner.RepositoryScanner;
+import jakarta.persistence.EntityManagerFactory;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -28,6 +29,7 @@ public class IndexinatorBuilder {
     private String[] entityPackages = new String[0];
     private boolean scanRepositories = false;
     private String[] repositoryPackages = new String[0];
+    private EntityManagerFactory entityManagerFactory;
 
     /**
      * Add explicit entity classes to analyze.
@@ -120,6 +122,20 @@ public class IndexinatorBuilder {
     }
 
     /**
+     * Use the runtime {@link EntityManagerFactory} to resolve physical table and column names.
+     * <p>
+     * With a factory, requirements are resolved through the JPA provider's mapping metadata
+     * (for example Hibernate), so naming strategies and inheritance mappings are taken into account.
+     *
+     * @param entityManagerFactory runtime entity manager factory
+     * @return this builder
+     */
+    public IndexinatorBuilder withEntityManagerFactory(EntityManagerFactory entityManagerFactory) {
+        this.entityManagerFactory = entityManagerFactory;
+        return this;
+    }
+
+    /**
      * Materialize the configured inspection input.
      *
      * @return configured inspection runner
@@ -160,7 +176,7 @@ public class IndexinatorBuilder {
             );
         }
 
-        return new ConfiguredIndexinator(finalEntities, finalRepositories);
+        return new ConfiguredIndexinator(finalEntities, finalRepositories, entityManagerFactory);
     }
 
     /**
@@ -169,11 +185,14 @@ public class IndexinatorBuilder {
     public static class ConfiguredIndexinator {
         private final Set<Class<?>> entities;
         private final Set<Class<?>> repositories;
+        private final EntityManagerFactory entityManagerFactory;
         private final Indexinator indexinator;
 
-        ConfiguredIndexinator(Set<Class<?>> entities, Set<Class<?>> repositories) {
+        ConfiguredIndexinator(Set<Class<?>> entities, Set<Class<?>> repositories,
+                              EntityManagerFactory entityManagerFactory) {
             this.entities = entities;
             this.repositories = repositories;
+            this.entityManagerFactory = entityManagerFactory;
             this.indexinator = new Indexinator();
         }
 
@@ -185,6 +204,9 @@ public class IndexinatorBuilder {
          * @throws SQLException if schema inspection fails
          */
         public InspectionReport inspect(Connection connection) throws SQLException {
+            if (entityManagerFactory != null) {
+                return indexinator.inspect(connection, entityManagerFactory, entities, repositories);
+            }
             if (repositories.isEmpty()) {
                 return indexinator.inspect(connection, entities);
             } else {

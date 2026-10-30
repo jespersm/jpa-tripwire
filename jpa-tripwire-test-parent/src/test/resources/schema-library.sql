@@ -1,6 +1,9 @@
 -- Library Lending Tripwire Schema
 -- This schema intentionally omits indexes and selected unique constraints so the tools have real findings.
 
+DROP TABLE IF EXISTS notices CASCADE;
+DROP TABLE IF EXISTS late_fees CASCADE;
+DROP TABLE IF EXISTS fees CASCADE;
 DROP TABLE IF EXISTS loans CASCADE;
 DROP TABLE IF EXISTS book_authors CASCADE;
 DROP TABLE IF EXISTS book_copies CASCADE;
@@ -77,3 +80,32 @@ CREATE TABLE loans (
     FOREIGN KEY (copy_id) REFERENCES book_copies(id),
     FOREIGN KEY (borrower_id) REFERENCES borrowers(id)
 );
+
+-- Naming fixtures: camelCase join columns, JOINED and SINGLE_TABLE inheritance.
+-- fees.borrower_id is mapped as @JoinColumn(name = "borrowerId") and IS indexed.
+CREATE TABLE fees (
+    id BIGSERIAL PRIMARY KEY,
+    paid BOOLEAN NOT NULL DEFAULT FALSE,
+    borrower_id BIGINT NOT NULL,
+    FOREIGN KEY (borrower_id) REFERENCES borrowers(id)
+);
+CREATE INDEX idx_fees_borrower_id ON fees(borrower_id);
+
+-- JOINED subclass of fees.
+-- INTENTIONAL ISSUE: No index on loan_id.
+CREATE TABLE late_fees (
+    id BIGINT PRIMARY KEY,
+    loan_id BIGINT NOT NULL,
+    FOREIGN KEY (id) REFERENCES fees(id),
+    FOREIGN KEY (loan_id) REFERENCES loans(id)
+);
+
+-- SINGLE_TABLE hierarchy: OverdueNotice has no table of its own.
+-- notices.loan_id is mapped as @JoinColumn(name = "loanId") and IS indexed.
+CREATE TABLE notices (
+    id BIGSERIAL PRIMARY KEY,
+    dtype VARCHAR(31) NOT NULL,
+    loan_id BIGINT,
+    FOREIGN KEY (loan_id) REFERENCES loans(id)
+);
+CREATE INDEX idx_notices_loan_id ON notices(loan_id);
