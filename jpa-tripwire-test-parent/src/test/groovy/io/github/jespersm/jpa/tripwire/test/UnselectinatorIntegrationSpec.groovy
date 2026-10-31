@@ -1,7 +1,6 @@
 package io.github.jespersm.jpa.tripwire.test
 
 import io.github.jespersm.jpa.tripwire.test.entity.SchoolClass
-import io.github.jespersm.jpa.tripwire.test.entity.Teacher
 import io.github.jespersm.jpa.tripwire.test.repository.SchoolClassRepository
 import io.github.jespersm.jpa.tripwire.unselectinator.core.LazyLoadKind
 import io.github.jespersm.jpa.tripwire.unselectinator.hibernate.spring.UnselectinatorSpringConfiguration
@@ -22,7 +21,7 @@ class UnselectinatorIntegrationSpec extends AbstractTripwireSpec {
         SchoolClass schoolClass = schoolClassRepository.findByCourseCode("CS101")
                 .orElseThrow { new AssertionError("Expected to find seeded class CS101") }
 
-        def summaries = schoolClass.students
+        def summaries = schoolClass.students.toList().sort { it.id }
                 .collect { student ->
                     "${student.firstName} (advisor: ${student.advisor.lastName}) is enrolled in ${student.classes.size()} classes"
                 }
@@ -43,7 +42,7 @@ class UnselectinatorIntegrationSpec extends AbstractTripwireSpec {
             SchoolClass schoolClass = schoolClassRepository.findByCourseCode("CS101")
                     .orElseThrow { new AssertionError("Expected to find seeded class CS101") }
 
-            schoolClass.students
+            schoolClass.students.toList().sort { it.id }
                     .collect { student ->
                         "${student.firstName} (advisor: ${student.advisor.lastName}) is enrolled in ${student.classes.size()} classes"
                     }
@@ -59,13 +58,14 @@ class UnselectinatorIntegrationSpec extends AbstractTripwireSpec {
 
         and:
         def report = observation.report()
-        report.lazySelectCount == 5
+        // Student id order lets earlier eager SchoolClass.teacher loads initialize later advisors.
+        report.lazySelectCount == 4
         report.countLazySelectsByRelation("students") == 1L
         report.countLazySelectsByRelation("classes") == 3L
         report.lazySelectEvents().count {
-            it.kind() == LazyLoadKind.ENTITY_LOAD && it.loadedEntity()?.entityName() == Teacher.name
-        } == 1
-        report.countLazySelectsInitiatedBy("${SchoolClassRepository.name}#findByCourseCode") == 5L
+            it.kind() == LazyLoadKind.ENTITY_LOAD
+        } == 0
+        report.countLazySelectsInitiatedBy("${SchoolClassRepository.name}#findByCourseCode") == 4L
     }
 
     @Transactional
@@ -79,7 +79,7 @@ class UnselectinatorIntegrationSpec extends AbstractTripwireSpec {
                     .setParameter("courseCode", "CS101")
                     .singleResult
 
-            schoolClass.students
+            schoolClass.students.toList().sort { it.id }
                     .collect { student -> "${student.firstName} is enrolled in ${student.classes.size()} classes" }
                     .sort()
         } as Supplier<List<String>>)
@@ -93,13 +93,14 @@ class UnselectinatorIntegrationSpec extends AbstractTripwireSpec {
 
         and:
         def report = observation.report()
-        report.lazySelectCount == 5
+        // Student id order lets earlier eager SchoolClass.teacher loads initialize later advisors.
+        report.lazySelectCount == 4
         report.countLazySelectsByRelation("students") == 1L
         report.countLazySelectsByRelation("classes") == 3L
         report.lazySelectEvents().count {
-            it.kind() == LazyLoadKind.ENTITY_LOAD && it.loadedEntity()?.entityName() == Teacher.name
-        } == 1
-        report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery") == 5L
+            it.kind() == LazyLoadKind.ENTITY_LOAD
+        } == 0
+        report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery") == 4L
     }
 }
 

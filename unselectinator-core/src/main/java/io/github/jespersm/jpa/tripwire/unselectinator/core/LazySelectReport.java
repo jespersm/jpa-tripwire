@@ -73,8 +73,10 @@ public record LazySelectReport(int totalSelectCount, List<TrackedLoadEvent> load
      */
     public long countLazySelectsInitiatedBy(String endpointSignature) {
         return lazySelectEvents.stream()
-                .filter(event -> event.initiatingEndpoint() != null)
-                .filter(event -> endpointSignature.equals(event.initiatingEndpoint().signature()))
+                .filter(event -> event.attributions().isEmpty()
+                        ? event.initiatingEndpoint() != null && endpointSignature.equals(event.initiatingEndpoint().signature())
+                        : event.attributions().stream().map(a -> a.origin().initiatingEndpoint())
+                        .anyMatch(endpoint -> endpoint != null && endpointSignature.equals(endpoint.signature())))
                 .count();
     }
 
@@ -93,7 +95,11 @@ public record LazySelectReport(int totalSelectCount, List<TrackedLoadEvent> load
                             .map(event -> " - " + event.kind() + " "
                                     + (event.owner() != null ? event.owner().displayName() : "<unknown-owner>")
                                     + "." + event.relationName()
-                                    + " via " + event.initiatingEndpoint().displayName())
+                                    + " triggered at " + (event.triggerLocation() != null
+                                            ? event.triggerLocation().toString() : "<unknown>")
+                                    + " via " + (event.initiatingEndpoint() != null
+                                            ? event.initiatingEndpoint().toString() : "<unknown or ambiguous origin>")
+                                    + (event.attributions().isEmpty() ? "" : " origins=" + event.attributions()))
                             .collect(Collectors.joining("\n")));
         }
 
