@@ -5,7 +5,7 @@
     <parent>
         <groupId>io.github.jespersm.jpa-tripwire</groupId>
         <artifactId>jpa-tripwire-test-parent</artifactId>
-        <version>1.0.2</version>
+        <version>1.0.3-SNAPSHOT</version>
         <relativePath>../jpa-tripwire-test-parent</relativePath>
     </parent>
 
@@ -194,11 +194,12 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.6.0</version>
                 <configuration>
+                    <failIfNoTests>true</failIfNoTests>
                     <includes>
-                        <include>**/*Test.class</include>
-                        <include>**/*Tests.class</include>
-                        <include>**/*TestCase.class</include>
-                        <include>**/*Spec.class</include>
+                        <include>**/*Test.java</include>
+                        <include>**/*Tests.java</include>
+                        <include>**/*TestCase.java</include>
+                        <include>**/*Spec.java</include>
                     </includes>
                 </configuration>
             </plugin>

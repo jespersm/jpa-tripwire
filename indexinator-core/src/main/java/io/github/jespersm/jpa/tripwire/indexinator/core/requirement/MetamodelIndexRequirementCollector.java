@@ -12,6 +12,7 @@ import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.metamodel.Attribute;
 import jakarta.persistence.metamodel.EntityType;
 import jakarta.persistence.metamodel.Metamodel;
+import jakarta.persistence.metamodel.SingularAttribute;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -40,7 +41,7 @@ public class MetamodelIndexRequirementCollector {
             requirements.addAll(collectDeclaredIndexRequirements(entityClass));
         }
 
-        requirements.addAll(collectRepositoryRequirements(repositories));
+        requirements.addAll(collectRepositoryRequirements(metamodel, repositories));
         return requirements;
     }
 
@@ -164,15 +165,21 @@ public class MetamodelIndexRequirementCollector {
         return requirements;
     }
 
-    private List<IndexRequirement> collectRepositoryRequirements(List<RepositoryMetadata> repositories) {
+    private List<IndexRequirement> collectRepositoryRequirements(Metamodel metamodel,
+                                                                 List<RepositoryMetadata> repositories) {
         List<IndexRequirement> requirements = new ArrayList<>();
 
         for (RepositoryMetadata repository : repositories) {
             Class<?> entityClass = repository.getEntityClass();
+            List<String> idAttributes = identifierAttributes(metamodel, entityClass);
 
             for (QueryMethodMetadata queryMethod : repository.getQueryMethods()) {
                 List<String> fields = queryMethod.queriedFields();
                 if (fields.isEmpty()) {
+                    continue;
+                }
+                // A lookup that includes the whole primary key matches at most one row, so the primary key index suffices.
+                if (!idAttributes.isEmpty() && fields.containsAll(idAttributes)) {
                     continue;
                 }
 
@@ -203,6 +210,24 @@ public class MetamodelIndexRequirementCollector {
         }
 
         return requirements;
+    }
+
+    private List<String> identifierAttributes(Metamodel metamodel, Class<?> entityClass) {
+        EntityType<?> entityType = entityClass != null ? getEntityType(metamodel, entityClass) : null;
+        if (entityType == null) {
+            return List.of();
+        }
+        try {
+            if (entityType.hasSingleIdAttribute()) {
+                return entityType.getSingularAttributes().stream()
+                        .filter(SingularAttribute::isId)
+                        .map(SingularAttribute::getName)
+                        .toList();
+            }
+            return entityType.getIdClassAttributes().stream().map(SingularAttribute::getName).toList();
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
     }
 
     private boolean isOwningOneToOne(Class<?> entityClass, String fieldName) {

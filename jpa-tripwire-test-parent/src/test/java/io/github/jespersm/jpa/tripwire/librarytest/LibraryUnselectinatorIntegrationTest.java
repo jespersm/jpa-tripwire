@@ -1,6 +1,7 @@
 package io.github.jespersm.jpa.tripwire.librarytest;
 
 import io.github.jespersm.jpa.tripwire.librarytest.entity.Loan;
+import io.github.jespersm.jpa.tripwire.unselectinator.core.LazyLoadKind;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.LazySelectReport;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.ObservationResult;
 import jakarta.transaction.Transactional;
@@ -24,11 +25,8 @@ class LibraryUnselectinatorIntegrationTest extends AbstractLibraryTripwireTest {
         assertEquals(expectedLoanSummaries(), observation.value());
 
         LazySelectReport report = observation.report();
-        assertEquals(7, report.getLazySelectCount(), "Expected borrower loans, branch copies, and book authors lazy loads");
-        assertEquals(2L, report.countLazySelectsByRelation("loans"));
-        assertEquals(2L, report.countLazySelectsByRelation("copies"));
-        assertEquals(3L, report.countLazySelectsByRelation("authors"));
-        assertEquals(7L, report.countLazySelectsInitiatedBy(
+        assertExpectedLazyLoads(report);
+        assertEquals(19L, report.countLazySelectsInitiatedBy(
                 "io.github.jespersm.jpa.tripwire.librarytest.repository.LoanRepository#findAllByReturnedAtIsNull"
         ));
     }
@@ -51,8 +49,24 @@ class LibraryUnselectinatorIntegrationTest extends AbstractLibraryTripwireTest {
         assertEquals(expectedLoanSummaries(), observation.value());
 
         LazySelectReport report = observation.report();
-        assertEquals(7, report.getLazySelectCount(), "Expected borrower loans, branch copies, and book authors lazy loads");
-        assertEquals(7L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+        assertExpectedLazyLoads(report);
+        assertEquals(19L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+    }
+
+    private static void assertExpectedLazyLoads(LazySelectReport report) {
+        assertEquals(19, report.getLazySelectCount(),
+                "Expected seven collection loads and twelve to-one entity loads");
+        assertEquals(2L, report.countLazySelectsByRelation("loans"));
+        assertEquals(2L, report.countLazySelectsByRelation("copies"));
+        assertEquals(3L, report.countLazySelectsByRelation("authors"));
+        assertEquals(2L, report.countLazySelectsByRelation("borrower"));
+        assertEquals(2L, report.countLazySelectsByRelation("profile"));
+        assertEquals(3L, report.countLazySelectsByRelation("copy"));
+        assertEquals(3L, report.countLazySelectsByRelation("book"));
+        assertEquals(2L, report.countLazySelectsByRelation("branch"));
+        assertEquals(12L, report.lazySelectEvents().stream()
+                .filter(event -> event.kind() == LazyLoadKind.ENTITY_LOAD)
+                .count());
     }
 
     private List<String> expectedLoanSummaries() {

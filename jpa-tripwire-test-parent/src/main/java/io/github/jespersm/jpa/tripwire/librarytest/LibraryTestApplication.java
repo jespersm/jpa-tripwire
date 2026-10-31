@@ -5,7 +5,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 @SpringBootApplication
-@EnableJpaRepositories("io.github.jespersm.jpa.tripwire.librarytest.repository")
+@EnableJpaRepositories({
+        "io.github.jespersm.jpa.tripwire.librarytest.repository",
+        "io.github.jespersm.jpa.tripwire.librarytest.naming"
+})
 public class LibraryTestApplication {
 
     public static void main(String[] args) {

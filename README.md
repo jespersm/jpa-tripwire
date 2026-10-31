@@ -163,6 +163,17 @@ try (Connection connection = dataSource.getConnection()) {
     assertFalse(report.hasIssues(), "Expected no index findings for things in libraries.");
 ```
 
+Pass the application's `EntityManagerFactory` to resolve table and column names through the JPA provider's mapping metadata. This takes naming strategies (such as Spring Boot's default `CamelCaseToUnderscoresNamingStrategy`) and `JOINED`/`SINGLE_TABLE` inheritance into account, which reading the annotations alone does not:
+
+```java
+InspectionReport report = Indexinator.builder()
+        .withScannedEntities("com.myapp.entity")
+        .withScannedRepositories("com.myapp.repository")
+        .withEntityManagerFactory(entityManagerFactory)
+        .build()
+        .inspect(connection);
+```
+
 See [`IndexinatorIntegrationTest`](jpa-tripwire-test-parent/src/test/java/io/github/jespersm/jpa/tripwire/test/IndexinatorIntegrationTest.java) for a working example.
 
 ### Detection types

@@ -14,6 +14,7 @@ import jakarta.persistence.metamodel.Metamodel;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.stream.Stream;
 
 /**
  * Primary facade for running Indexinator inspections.
@@ -132,14 +133,21 @@ public class Indexinator {
         DatabaseSchemaInspector schemaInspector = new DatabaseSchemaInspector(connection);
         Map<String, TableSchema> schemas = schemaInspector.inspectDatabase();
 
-        // Keep legacy checks for migration safety.
-        List<Issue> legacyIssues = issueDetector.detectIssues(entities, schemas);
+        // The legacy checks read table and column names from annotations, which misses naming strategies and
+        // inheritance mappings. Keep only the join-table checks, which the requirement pipeline doesn't cover yet.
+        List<Issue> legacyIssues = issueDetector.detectIssues(entities, schemas).stream()
+                .filter(issue -> issue.type() == IssueType.MISSING_JOIN_TABLE ||
+                        issue.type() == IssueType.MISSING_JOIN_TABLE_INDEX)
+                .toList();
 
         Metamodel metamodel = entityManagerFactory.getMetamodel();
+        List<Issue> tableIssues = requirementIssueDetector.detectTableIssues(metamodel, entityClasses, schemas,
+                entityManagerFactory);
         List<IndexRequirement> requirements = requirementCollector.collect(metamodel, entityClasses, repositories);
         List<Issue> requirementIssues = requirementIssueDetector.detectIssues(requirements, schemas, entityManagerFactory);
 
-        List<Issue> mergedIssues = mergeDistinctIssues(legacyIssues, requirementIssues);
+        List<Issue> mergedIssues = mergeDistinctIssues(legacyIssues,
+                Stream.concat(tableIssues.stream(), requirementIssues.stream()).toList());
         return new InspectionReport(mergedIssues, schemas.size(), entities.size());
     }
 
