@@ -20,13 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          - java-version: '17'
-            maven-args: '-pl !jpa-tripwire-test-sb4'
-          - java-version: '21'
-            maven-args: ''
-          - java-version: '25'
-            maven-args: ''
+        java-version: ['17', '21', '25']
 
     steps:
       - name: Check out repository
@@ -42,4 +36,4 @@ jobs:
           cache: maven
 
       - name: Verify Maven build
-        run: ./mvnw -B verify ${{ matrix.maven-args }}
+        run: ./mvnw -B verify

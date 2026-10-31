@@ -11,12 +11,12 @@
 
     <artifactId>jpa-tripwire-test-sb4</artifactId>
     <name>JPA Tripwire - Spring Boot 4 Test</name>
-    <description>Integration tests for Spring Boot 4.0+ + Hibernate 6.6+ compatibility (requires JDK 21+)</description>
+    <description>Integration tests for Spring Boot 4.0+ + Hibernate 6.6+ compatibility</description>
 
     <properties>
         <spring.boot.test.version>4.0.4</spring.boot.test.version>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <maven.deploy.skip>true</maven.deploy.skip>
     </properties>
 
