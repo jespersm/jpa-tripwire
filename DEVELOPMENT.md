@@ -6,7 +6,23 @@
 - Maven 3.6+
 - Docker (required for Testcontainers in integration tests)
 
-Building and running the tests is just plain Maven.
+Building and running the tests uses the Maven wrapper (`./mvnw`).
+
+### Tests
+
+The Spring Boot 3.5 and 4 runners execute the same integration tests from
+`jpa-tripwire-test-parent`. Run each supported line with:
+
+```bash
+./mvnw -pl jpa-tripwire-test-sb35 -am test
+./mvnw -pl jpa-tripwire-test-sb4 -am test
+```
+
+These tests use Testcontainers PostgreSQL and require Docker. Test profiles set
+the PostgreSQL dialect explicitly and suppress routine Spring/Hibernate output,
+the Spring banner, and Tripwire's expected lazy-load warnings. Those warnings
+are the behavior under test; the tests assert on their reports instead. Raise
+the relevant logger levels locally when diagnosing a failure.
 
 ### Project Structure
 
@@ -14,32 +30,35 @@ This is a multi-module Maven project:
 
 ```
 jpa-tripwire/
+├── common-test-models/        # Shared JPA entity models and metamodel test support
+│   └── Reusable entity and metamodel fixtures
+│
 ├── indexinator-core/          # Core inspection library
 │   └── Reusable library for JPA/database inspection
 │
-├── indexinator-hibernate/     # Hibernate schema informationprovider extension
+├── indexinator-hibernate/     # Hibernate schema information provider extension
 │   └── ServiceLoader-based mapping resolver for requirement-to-schema mapping
 │
-├── unselectinator-core/       # Core interceptor library for detecting N+1 selects
-│   └── Reusable library for repository method interception and query analysis
+├── unselectinator-core/       # Core lazy-select tracking and reporting
+│   └── Provider-agnostic observation primitives
 │
-├── unselectinator-hibernate/     # Hibernate event provider extension
-│   └── ServiceLoader-based interceptor provider for detecting N+1 selects at runtime
+├── unselectinator-hibernate/  # Hibernate/Spring integration for lazy-load observation
+│   └── Hibernate hooks and Spring configuration
 │
 ├── jpa-tripwire-test-parent/   # Shared Spring Boot test fixture sources
 │   └── Main/test sources reused by versioned test runners
 │
 ├── jpa-tripwire-test-sb35/     # Source-less Spring Boot 3.5 runner
-│   └── Java 17 runner compiling shared test-parent sources
+│   └── Java 17+ runner compiling shared test-parent sources
 │
 └── jpa-tripwire-test-sb4/      # Source-less Spring Boot 4 runner
-    └── Java 21 runner compiling shared test-parent sources
+    └── Java 17+ runner compiling shared test-parent sources
 ```
 
 ### Publishing
 
 Publishing is automated with GitHub Actions and Maven Central's token-based authentication.
-No GPG setup is required for this repository's Central flow.
+Release publishing also signs artifacts with GPG; snapshot publishing skips signing.
 
 #### Workflows
 
@@ -70,6 +89,9 @@ Add these secrets to both environments:
 
 - `CENTRAL_TOKEN_USER`
 - `CENTRAL_TOKEN_PASS`
+
+For `central-releases`, also add `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE`.
+The corresponding public key must be published to a keyserver supported by Central.
 
 Recommended protections:
 
@@ -113,13 +135,7 @@ feat!: rename inspection API to simplify usage
 
 Test modules (`jpa-tripwire-test-parent`, `jpa-tripwire-test-sb35`, `jpa-tripwire-test-sb4`) are also marked with `maven.deploy.skip=true` and excluded from the Central bundle so test fixtures cannot be published accidentally.
 
-#### Optional local publish commands
+#### Optional local publish command
 
-If you ever need to verify the Central profile locally, the workflow uses the same Maven profile:
-
-```zsh
-./mvnw -B -Prelease -DskipTests deploy
-```
-
-The workflow-generated Maven settings use the `central` server id expected by the root `pom.xml`.
-
+To verify the Central profile locally, run `./mvnw -B -Prelease -DskipTests deploy`.
+The generated Maven settings must use the `central` server id from the root POM.

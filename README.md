@@ -14,11 +14,11 @@ I built the JPA Tripwire to help developers identify common database performance
 - Missing indexes on frequently queried columns
 - Suboptimal composite indexes
 
-## Unselectinator: How to spot N+1 selects in integration test
+## Unselectinator: How to spot N+1 selects in integration tests
 
-`unselectinator-hibernate` contains Spring configuration beans to enable capturing lazy loads.
+`unselectinator-hibernate` provides Spring configuration to capture lazy loads.
 
-The main entry point is [`UnselectinatorSpringConfiguration`](unselectinator-hibernate/src/main/java/io/github/jespersm/jpa/tripwire/unselectinator/hibernate/spring/UnselectinatorSpringConfiguration.java), and with that, you can wrap observations in an [`Unselectinator`](unselectinator-core/src/main/java/io/github/jespersm/jpa/tripwire/unselectinator/core/Unselectinator.java), which registers the required instrumentation (using  [`EntityLoadTracker`](unselectinator-core/src/main/java/io/github/jespersm/jpa/tripwire/unselectinator/core/EntityLoadTracker.java), [`ObservedEntityManagerFactory`](unselectinator-core/src/main/java/io/github/jespersm/jpa/tripwire/unselectinator/core/ObservedEntityManagerFactory.java) and [`RepositoryFetchObservationAspect`](unselectinator-hibernate/src/main/java/io/github/jespersm/jpa/tripwire/unselectinator/hibernate/spring/RepositoryFetchObservationAspect.java)). 
+Import [`UnselectinatorSpringConfiguration`](unselectinator-hibernate/src/main/java/io/github/jespersm/jpa/tripwire/unselectinator/hibernate/spring/UnselectinatorSpringConfiguration.java) to wire the [`Unselectinator`](unselectinator-core/src/main/java/io/github/jespersm/jpa/tripwire/unselectinator/core/Unselectinator.java), Hibernate listeners, and repository observation. The configuration instruments Spring-managed `EntityManagerFactory` and `EntityManager` instances; tests do not need to inject a special observed factory.
 
 Nothing activates automatically, so each test class opts in explicitly. Example:
 
@@ -26,20 +26,28 @@ Nothing activates automatically, so each test class opts in explicitly. Example:
 @SpringBootTest(classes = MyApp.class)
 @Import(UnselectinatorSpringConfiguration.class)
 class MyIntegrationTest {
-    ...
+    @Autowired
+    private Unselectinator unselectinator;
+
+    @Autowired
+    private ThingRepository thingRepository;
 
     @Test
     @Transactional
     void testThingWorksWell() {
-        var report = unselectinator.observe(() -> {
-                var aThing = thingRepository.findByFrobKind("xyz");
-                assertTrue(aThing.thingWorks());
+        var observation = unselectinator.observe(() -> {
+            var aThing = thingRepository.findByFrobKind("xyz");
+            return aThing.thingWorks();
         });
-        assertEquals(0, report.getLazySelectCount(), "Expected that things could work without lazy loads");
+        assertTrue(observation.value());
+        assertEquals(0, observation.report().getLazySelectCount(),
+                "Expected that things could work without lazy loads");
     }
-    ...
 }
 ```
+
+For a value-returning operation, `observe` returns an `ObservationResult` containing
+both the operation's value and its lazy-select report.
 
 You can also put the reference into a shared test base class:
 
@@ -50,8 +58,7 @@ abstract class AbstractMyTest { }
 
 See [`UnselectinatorIntegrationTest`](jpa-tripwire-test-parent/src/test/java/io/github/jespersm/jpa/tripwire/test/UnselectinatorIntegrationTest.java) for a working example.
 
-The library provides a tracker-based interceptor that detects N+1 select patterns at runtime by monitoring Entity Manager loads and Spring Data repository method executions and the resulting SQL statements.
-Wraps repository methods and tracks entity loads to identify when multiple queries are issued for related entities, indicating potential N+1 issues. Currently only supports Hibernate as a JPA provider.
+The tracker observes entity loads and SELECT statements during repository and `EntityManager` operations to report lazy loads that may indicate an N+1 pattern. Hibernate is currently the only supported JPA provider.
 
 ## Indexinator: How to assert your database is properly indexed
 
@@ -60,22 +67,26 @@ Wraps repository methods and tracks entity loads to identify when multiple queri
 ```java
 try (Connection connection = dataSource.getConnection()) {
     InspectionReport report = Indexinator.builder()
-           .withEntities(ThingLibrary.class, Thing.class, ThingAttribute.class)
-           .withRepositories(ThingLibraryRepository.class, ThingRepository.class)
-           .build()
-           .inspect(connection);
+            .withEntities(ThingLibrary.class, Thing.class, ThingAttribute.class)
+            .withRepositories(ThingLibraryRepository.class, ThingRepository.class)
+            .build()
+            .inspect(connection);
     assertFalse(report.hasIssues(), "Expected no index findings for things in libraries.");
+}
 ```
 
 Pass the application's `EntityManagerFactory` to resolve table and column names through the JPA provider's mapping metadata. This takes naming strategies (such as Spring Boot's default `CamelCaseToUnderscoresNamingStrategy`) and `JOINED`/`SINGLE_TABLE` inheritance into account, which reading the annotations alone does not:
 
 ```java
-InspectionReport report = Indexinator.builder()
-        .withScannedEntities("com.myapp.entity")
-        .withScannedRepositories("com.myapp.repository")
-        .withEntityManagerFactory(entityManagerFactory)
-        .build()
-        .inspect(connection);
+try (Connection connection = dataSource.getConnection()) {
+    InspectionReport report = Indexinator.builder()
+            .withScannedEntities("com.myapp.entity")
+            .withScannedRepositories("com.myapp.repository")
+            .withEntityManagerFactory(entityManagerFactory)
+            .build()
+            .inspect(connection);
+    assertFalse(report.hasIssues(), "Expected no index findings for mapped entities.");
+}
 ```
 
 See [`IndexinatorIntegrationTest`](jpa-tripwire-test-parent/src/test/java/io/github/jespersm/jpa/tripwire/test/IndexinatorIntegrationTest.java) for a working example.
@@ -92,7 +103,10 @@ See [`IndexinatorIntegrationTest`](jpa-tripwire-test-parent/src/test/java/io/git
 
 ### Hibernate Support
 
-Hibernate support is optional, in that a ServiceLoader-based provider (`RequirementMappingResolverProvider`) that maps JPA entity/property requirements to actual table/column names using Hibernate's metamodel API, enabling more accurate schema validation than using the basic introspection based on stock JPA table and schema mappings.
+The optional `indexinator-hibernate` module provides a ServiceLoader-based
+`RequirementMappingResolverProvider`. When an `EntityManagerFactory` is supplied,
+it uses Hibernate mapping metadata to resolve physical table and column names,
+including naming strategies and inheritance mappings.
 
 ## Publishing releases
 

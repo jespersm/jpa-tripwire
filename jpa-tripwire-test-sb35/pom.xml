@@ -11,7 +11,7 @@
 
     <artifactId>jpa-tripwire-test-sb35</artifactId>
     <name>JPA Tripwire - Spring Boot 3.5 Test</name>
-    <description>Integration tests for Spring Boot 3.5 + Hibernate 6.5 compatibility</description>
+    <description>Integration tests for Spring Boot 3.5 + Hibernate 6.6 compatibility</description>
 
     <properties>
         <spring.boot.test.version>3.5.12</spring.boot.test.version>
