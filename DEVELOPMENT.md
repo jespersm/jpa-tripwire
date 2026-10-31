@@ -30,32 +30,35 @@ This is a multi-module Maven project:
 
 ```
 jpa-tripwire/
+├── common-test-models/        # Shared JPA entity models and metamodel test support
+│   └── Reusable entity and metamodel fixtures
+│
 ├── indexinator-core/          # Core inspection library
 │   └── Reusable library for JPA/database inspection
 │
-├── indexinator-hibernate/     # Hibernate schema informationprovider extension
+├── indexinator-hibernate/     # Hibernate schema information provider extension
 │   └── ServiceLoader-based mapping resolver for requirement-to-schema mapping
 │
-├── unselectinator-core/       # Core interceptor library for detecting N+1 selects
-│   └── Reusable library for repository method interception and query analysis
+├── unselectinator-core/       # Core lazy-select tracking and reporting
+│   └── Provider-agnostic observation primitives
 │
-├── unselectinator-hibernate/     # Hibernate event provider extension
-│   └── ServiceLoader-based interceptor provider for detecting N+1 selects at runtime
+├── unselectinator-hibernate/  # Hibernate/Spring integration for lazy-load observation
+│   └── Hibernate hooks and Spring configuration
 │
 ├── jpa-tripwire-test-parent/   # Shared Spring Boot test fixture sources
 │   └── Main/test sources reused by versioned test runners
 │
 ├── jpa-tripwire-test-sb35/     # Source-less Spring Boot 3.5 runner
-│   └── Java 17 runner compiling shared test-parent sources
+│   └── Java 17+ runner compiling shared test-parent sources
 │
 └── jpa-tripwire-test-sb4/      # Source-less Spring Boot 4 runner
-    └── Java 21 runner compiling shared test-parent sources
+    └── Java 17+ runner compiling shared test-parent sources
 ```
 
 ### Publishing
 
 Publishing is automated with GitHub Actions and Maven Central's token-based authentication.
-No GPG setup is required for this repository's Central flow.
+Release publishing also signs artifacts with GPG; snapshot publishing skips signing.
 
 #### Workflows
 
@@ -86,6 +89,9 @@ Add these secrets to both environments:
 
 - `CENTRAL_TOKEN_USER`
 - `CENTRAL_TOKEN_PASS`
+
+For `central-releases`, also add `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE`.
+The corresponding public key must be published to a keyserver supported by Central.
 
 Recommended protections:
 
