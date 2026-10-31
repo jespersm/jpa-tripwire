@@ -22,7 +22,6 @@ class LibraryPhysicalNamingIndexinatorIntegrationTest extends AbstractLibraryTri
     @Test
     void testBuilderWithEntityManagerFactoryUsesPhysicalNames() throws Exception {
         InspectionReport report = inspect(true);
-        System.out.println(report);
 
         // SINGLE_TABLE subclasses live in the root table.
         assertNone(report, issue -> issue.type() == IssueType.MISSING_PRIMARY_KEY);

@@ -21,7 +21,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Integration test for Indexinator using Spring Boot 3.5 + Testcontainers PostgreSQL
+ * Integration test for Indexinator using Spring Boot + Testcontainers PostgreSQL
  */
 class UnselectinatorIntegrationTest extends AbstractTripwireTest {
     @PersistenceContext

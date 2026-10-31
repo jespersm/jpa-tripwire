@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Integration test for Indexinator using Spring Boot 3.5 + Testcontainers PostgreSQL
+ * Integration test for Indexinator using Spring Boot + Testcontainers PostgreSQL
  */
 class IndexinatorIntegrationTest extends AbstractTripwireTest {
 
@@ -42,9 +42,6 @@ class IndexinatorIntegrationTest extends AbstractTripwireTest {
                     List.of(Teacher.class, Student.class, SchoolClass.class),
                     List.of(SchoolClassRepository.class)
             );
-
-            // Print the report for debugging
-            System.out.println(report);
 
             // With our static SQL schema, we intentionally omit indexes on FK columns!
             // This allows Indexinator to detect real issues.
@@ -103,10 +100,6 @@ class IndexinatorIntegrationTest extends AbstractTripwireTest {
             // We should find at least 1 query index issue (course_name from findAllByCourseNameStartsWith)
             assertEquals(1, queryUniqueIssues.size(),
                     "Should detect at least 1 missing unique index. Found: " + queryUniqueIssues.size());
-
-            System.out.println("Findings:");
-            System.out.println("   - " + fkIndexIssues.size() + " missing FK indexes");
-            System.out.println("   - " + queryIndexIssues.size() + " missing query indexes");
         }
     }
 

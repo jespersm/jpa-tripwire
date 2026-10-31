@@ -56,8 +56,6 @@ class LibraryIndexinatorIntegrationTest extends AbstractLibraryTripwireTest {
                     List.of(BookCopyRepository.class, LoanRepository.class)
             );
 
-            System.out.println(report);
-
             assertNotNull(report, "Report should not be null");
             assertEquals(7, report.getEntitiesAnalyzed(), "Should analyze only library entities");
 
