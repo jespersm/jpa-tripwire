@@ -6,7 +6,23 @@
 - Maven 3.6+
 - Docker (required for Testcontainers in integration tests)
 
-Building and running the tests is just plain Maven.
+Building and running the tests uses the Maven wrapper (`./mvnw`).
+
+### Tests
+
+The Spring Boot 3.5 and 4 runners execute the same integration tests from
+`jpa-tripwire-test-parent`. Run each supported line with:
+
+```bash
+./mvnw -pl jpa-tripwire-test-sb35 -am test
+./mvnw -pl jpa-tripwire-test-sb4 -am test
+```
+
+These tests use Testcontainers PostgreSQL and require Docker. Test profiles set
+the PostgreSQL dialect explicitly and suppress routine Spring/Hibernate output,
+the Spring banner, and Tripwire's expected lazy-load warnings. Those warnings
+are the behavior under test; the tests assert on their reports instead. Raise
+the relevant logger levels locally when diagnosing a failure.
 
 ### Project Structure
 
@@ -113,13 +129,7 @@ feat!: rename inspection API to simplify usage
 
 Test modules (`jpa-tripwire-test-parent`, `jpa-tripwire-test-sb35`, `jpa-tripwire-test-sb4`) are also marked with `maven.deploy.skip=true` and excluded from the Central bundle so test fixtures cannot be published accidentally.
 
-#### Optional local publish commands
+#### Optional local publish command
 
-If you ever need to verify the Central profile locally, the workflow uses the same Maven profile:
-
-```zsh
-./mvnw -B -Prelease -DskipTests deploy
-```
-
-The workflow-generated Maven settings use the `central` server id expected by the root `pom.xml`.
-
+To verify the Central profile locally, run `./mvnw -B -Prelease -DskipTests deploy`.
+The generated Maven settings must use the `central` server id from the root POM.
