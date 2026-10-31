@@ -37,3 +37,11 @@ jobs:
 
       - name: Verify Maven build
         run: ./mvnw -B verify
+
+      - name: Upload coverage to Codecov
+        if: matrix.java-version == '21'
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: target/jacoco-aggregate/jacoco.xml
+          fail_ci_if_error: false
