@@ -1,7 +1,9 @@
 package io.github.jespersm.jpa.tripwire.test;
 
 import io.github.jespersm.jpa.tripwire.test.entity.SchoolClass;
+import io.github.jespersm.jpa.tripwire.test.entity.Teacher;
 import io.github.jespersm.jpa.tripwire.test.repository.SchoolClassRepository;
+import io.github.jespersm.jpa.tripwire.unselectinator.core.LazyLoadKind;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.LazySelectReport;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.ObservationResult;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.TrackedLoadEvent;
@@ -81,10 +83,8 @@ class UnselectinatorIntegrationTest extends AbstractTripwireTest {
         );
 
         LazySelectReport report = observation.report();
-        assertEquals(4, report.getLazySelectCount(), "Expected one lazy load for students and three for student.classes");
-        assertEquals(1L, report.countLazySelectsByRelation("students"));
-        assertEquals(3L, report.countLazySelectsByRelation("classes"));
-        assertEquals(4L, report.countLazySelectsInitiatedBy(SchoolClassRepository.class.getName() + "#findByCourseCode"));
+        assertExpectedLazyLoads(report);
+        assertEquals(5L, report.countLazySelectsInitiatedBy(SchoolClassRepository.class.getName() + "#findByCourseCode"));
     }
 
     @Test
@@ -104,8 +104,8 @@ class UnselectinatorIntegrationTest extends AbstractTripwireTest {
         assertExpectedStudents(observation);
 
         LazySelectReport report = observation.report();
-        assertEquals(4, report.getLazySelectCount(), "Expected one lazy load for students and three for student.classes");
-        assertEquals(4L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+        assertExpectedLazyLoads(report);
+        assertEquals(5L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
     }
 
     @Test
@@ -122,8 +122,8 @@ class UnselectinatorIntegrationTest extends AbstractTripwireTest {
         assertExpectedStudents(observation);
 
         LazySelectReport report = observation.report();
-        assertEquals(4, report.getLazySelectCount(), "Expected one lazy load for students and three for student.classes");
-        assertEquals(4L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+        assertExpectedLazyLoads(report);
+        assertEquals(5L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
     }
 
     @Test
@@ -140,8 +140,8 @@ class UnselectinatorIntegrationTest extends AbstractTripwireTest {
 
         assertExpectedStudents(observation);
         LazySelectReport report = observation.report();
-        assertEquals(4, report.getLazySelectCount());
-        assertEquals(4L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+        assertExpectedLazyLoads(report);
+        assertEquals(5L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
         assertTrue(report.loadEvents().stream()
                 .anyMatch(TrackedLoadEvent::explicitFetchLoad), "The initial query must be an explicit fetch");
     }
@@ -160,8 +160,8 @@ class UnselectinatorIntegrationTest extends AbstractTripwireTest {
         });
 
         assertExpectedStudents(observation);
-        assertEquals(4, observation.report().getLazySelectCount());
-        assertEquals(4L, observation.report()
+        assertExpectedLazyLoads(observation.report());
+        assertEquals(5L, observation.report()
                 .countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
     }
 
@@ -174,7 +174,7 @@ class UnselectinatorIntegrationTest extends AbstractTripwireTest {
         });
 
         assertExpectedStudents(observation);
-        assertEquals(4, observation.report().getLazySelectCount());
+        assertExpectedLazyLoads(observation.report());
     }
 
     @Test
@@ -190,8 +190,8 @@ class UnselectinatorIntegrationTest extends AbstractTripwireTest {
         assertExpectedStudents(observation);
 
         LazySelectReport report = observation.report();
-        assertEquals(4, report.getLazySelectCount(), "Expected one lazy load for students and three for student.classes");
-        assertEquals(4L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+        assertExpectedLazyLoads(report);
+        assertEquals(5L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
     }
 
     @Test
@@ -207,8 +207,20 @@ class UnselectinatorIntegrationTest extends AbstractTripwireTest {
         assertExpectedStudents(observation);
 
         LazySelectReport report = observation.report();
-        assertEquals(4, report.getLazySelectCount(), "Expected one lazy load for students and three for student.classes");
-        assertEquals(4L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+        assertExpectedLazyLoads(report);
+        assertEquals(5L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+    }
+
+    private static void assertExpectedLazyLoads(LazySelectReport report) {
+        assertEquals(5, report.getLazySelectCount(),
+                "Expected four collection loads and one additional teacher load");
+        assertEquals(1L, report.countLazySelectsByRelation("students"));
+        assertEquals(3L, report.countLazySelectsByRelation("classes"));
+        assertEquals(1L, report.lazySelectEvents().stream()
+                .filter(event -> event.kind() == LazyLoadKind.ENTITY_LOAD)
+                .filter(event -> event.loadedEntity() != null)
+                .filter(event -> Teacher.class.getName().equals(event.loadedEntity().entityName()))
+                .count());
     }
 
     private static void assertExpectedStudents(ObservationResult<List<String>> observation) {
