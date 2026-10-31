@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.3](https://github.com/jespersm/jpa-tripwire/compare/v1.0.2...v1.0.3) (2026-10-31)
+
+
+### Bug Fixes
+
+* **indexinator:** resolve physical names via the EntityManagerFactory ([#49](https://github.com/jespersm/jpa-tripwire/issues/49)) ([e8cfd0b](https://github.com/jespersm/jpa-tripwire/commit/e8cfd0b1a614278940cb4c0a9c07d72b6f6b1aef))
+* Integration tests were not discoved in Spring Boot integration tests ([#55](https://github.com/jespersm/jpa-tripwire/issues/55)) ([5ed0737](https://github.com/jespersm/jpa-tripwire/commit/5ed0737e76c80af2bc5e22d0e7ebf3e7d1c364d4))
+* **tests:** DX improvements ([#59](https://github.com/jespersm/jpa-tripwire/issues/59)) ([#60](https://github.com/jespersm/jpa-tripwire/issues/60)) ([9c94a23](https://github.com/jespersm/jpa-tripwire/commit/9c94a23453aedec77412c1408a8d972647c6585c))
+
 ## [1.0.2](https://github.com/jespersm/jpa-tripwire/compare/v1.0.1...v1.0.2) (2026-10-20)
 
 
