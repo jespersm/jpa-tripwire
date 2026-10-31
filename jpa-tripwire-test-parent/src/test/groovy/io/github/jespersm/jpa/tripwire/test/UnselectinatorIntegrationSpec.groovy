@@ -1,7 +1,9 @@
 package io.github.jespersm.jpa.tripwire.test
 
 import io.github.jespersm.jpa.tripwire.test.entity.SchoolClass
+import io.github.jespersm.jpa.tripwire.test.entity.Teacher
 import io.github.jespersm.jpa.tripwire.test.repository.SchoolClassRepository
+import io.github.jespersm.jpa.tripwire.unselectinator.core.LazyLoadKind
 import io.github.jespersm.jpa.tripwire.unselectinator.hibernate.spring.UnselectinatorSpringConfiguration
 import jakarta.transaction.Transactional
 import java.util.function.Supplier
@@ -57,10 +59,13 @@ class UnselectinatorIntegrationSpec extends AbstractTripwireSpec {
 
         and:
         def report = observation.report()
-        report.lazySelectCount == 4
+        report.lazySelectCount == 5
         report.countLazySelectsByRelation("students") == 1L
         report.countLazySelectsByRelation("classes") == 3L
-        report.countLazySelectsInitiatedBy("${SchoolClassRepository.name}#findByCourseCode") == 4L
+        report.lazySelectEvents().count {
+            it.kind() == LazyLoadKind.ENTITY_LOAD && it.loadedEntity()?.entityName() == Teacher.name
+        } == 1
+        report.countLazySelectsInitiatedBy("${SchoolClassRepository.name}#findByCourseCode") == 5L
     }
 
     @Transactional
@@ -88,11 +93,15 @@ class UnselectinatorIntegrationSpec extends AbstractTripwireSpec {
 
         and:
         def report = observation.report()
-        report.lazySelectCount == 4
-        report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery") == 4L
+        report.lazySelectCount == 5
+        report.countLazySelectsByRelation("students") == 1L
+        report.countLazySelectsByRelation("classes") == 3L
+        report.lazySelectEvents().count {
+            it.kind() == LazyLoadKind.ENTITY_LOAD && it.loadedEntity()?.entityName() == Teacher.name
+        } == 1
+        report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery") == 5L
     }
 }
-
 
 
 
