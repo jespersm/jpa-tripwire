@@ -5,6 +5,7 @@ import io.github.jespersm.jpa.tripwire.unselectinator.core.LazyLoadKind;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.LazySelectReport;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.ObservationResult;
 import jakarta.transaction.Transactional;
+import java.util.Comparator;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -17,6 +18,7 @@ class LibraryUnselectinatorIntegrationTest extends AbstractLibraryTripwireTest {
     void testUnselectinatorTracksLibraryRepositoryTraversal() {
         ObservationResult<List<String>> observation = unselectinator.observe(() ->
                 loanRepository.findAllByReturnedAtIsNull().stream()
+                        .sorted(Comparator.comparing(Loan::getId))
                         .map(this::summarizeLoan)
                         .sorted()
                         .toList()
@@ -26,7 +28,7 @@ class LibraryUnselectinatorIntegrationTest extends AbstractLibraryTripwireTest {
 
         LazySelectReport report = observation.report();
         assertExpectedLazyLoads(report);
-        assertEquals(19L, report.countLazySelectsInitiatedBy(
+        assertEquals(18L, report.countLazySelectsInitiatedBy(
                 "io.github.jespersm.jpa.tripwire.librarytest.repository.LoanRepository#findAllByReturnedAtIsNull"
         ));
     }
@@ -36,7 +38,7 @@ class LibraryUnselectinatorIntegrationTest extends AbstractLibraryTripwireTest {
     void testUnselectinatorTracksLibraryEntityManagerTraversal() {
         ObservationResult<List<String>> observation = unselectinator.observe(() ->
                 entityManager.createQuery(
-                                "select loan from Loan loan where loan.returnedAt is null",
+                                "select loan from Loan loan where loan.returnedAt is null order by loan.id",
                                 Loan.class
                         )
                         .getResultList()
@@ -50,21 +52,23 @@ class LibraryUnselectinatorIntegrationTest extends AbstractLibraryTripwireTest {
 
         LazySelectReport report = observation.report();
         assertExpectedLazyLoads(report);
-        assertEquals(19L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
+        assertEquals(18L, report.countLazySelectsInitiatedBy("jakarta.persistence.EntityManager#createQuery"));
     }
 
     private static void assertExpectedLazyLoads(LazySelectReport report) {
-        assertEquals(19, report.getLazySelectCount(),
-                "Expected seven collection loads and twelve to-one entity loads");
+        assertEquals(18, report.getLazySelectCount(),
+                "Expected seven collection loads and eleven to-one entity loads");
         assertEquals(2L, report.countLazySelectsByRelation("loans"));
         assertEquals(2L, report.countLazySelectsByRelation("copies"));
         assertEquals(3L, report.countLazySelectsByRelation("authors"));
         assertEquals(2L, report.countLazySelectsByRelation("borrower"));
         assertEquals(2L, report.countLazySelectsByRelation("profile"));
-        assertEquals(3L, report.countLazySelectsByRelation("copy"));
+        // The first branch.copies initialization also loads the second loan's
+        // copy. Accessing that copy later does not perform a lazy entity load.
+        assertEquals(2L, report.countLazySelectsByRelation("copy"));
         assertEquals(3L, report.countLazySelectsByRelation("book"));
         assertEquals(2L, report.countLazySelectsByRelation("branch"));
-        assertEquals(12L, report.lazySelectEvents().stream()
+        assertEquals(11L, report.lazySelectEvents().stream()
                 .filter(event -> event.kind() == LazyLoadKind.ENTITY_LOAD)
                 .count());
     }
