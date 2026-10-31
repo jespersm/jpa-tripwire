@@ -1,5 +1,7 @@
 # JPA Tripwire
 
+[![codecov](https://codecov.io/gh/jespersm/jpa-tripwire/branch/main/graph/badge.svg)](https://codecov.io/gh/jespersm/jpa-tripwire)
+
 Tools for inspecting JPA/Hibernate models and databases to detect potential performance issues. Once burned, twice shy.
 
 ## Overview
