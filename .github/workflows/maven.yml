@@ -18,6 +18,15 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - java-version: '17'
+            maven-args: '-pl !jpa-tripwire-test-sb4'
+          - java-version: '21'
+            maven-args: ''
+          - java-version: '25'
+            maven-args: ''
 
     steps:
       - name: Check out repository
@@ -25,12 +34,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up JDK 21
+      - name: Set up JDK ${{ matrix.java-version }}
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: ${{ matrix.java-version }}
           cache: maven
 
       - name: Verify Maven build
-        run: ./mvnw -B verify
+        run: ./mvnw -B verify ${{ matrix.maven-args }}
