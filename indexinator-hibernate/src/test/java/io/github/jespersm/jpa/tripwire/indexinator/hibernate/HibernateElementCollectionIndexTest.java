@@ -1,10 +1,10 @@
 package io.github.jespersm.jpa.tripwire.indexinator.hibernate;
 
+import io.github.jespersm.jpa.tripwire.common.test.model.*;
 import io.github.jespersm.jpa.tripwire.indexinator.core.Indexinator;
 import io.github.jespersm.jpa.tripwire.indexinator.core.model.Issue;
 import io.github.jespersm.jpa.tripwire.indexinator.core.model.IssueType;
 import io.github.jespersm.jpa.tripwire.indexinator.core.requirement.*;
-import io.github.jespersm.jpa.tripwire.test.model.fixture.*;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.MetadataSources;
 import org.hibernate.boot.registry.StandardServiceRegistry;

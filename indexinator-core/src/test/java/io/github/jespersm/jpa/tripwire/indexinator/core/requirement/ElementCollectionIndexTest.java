@@ -1,9 +1,10 @@
 package io.github.jespersm.jpa.tripwire.indexinator.core.requirement;
 
+import io.github.jespersm.jpa.tripwire.common.test.model.Customer;
+import io.github.jespersm.jpa.tripwire.common.test.model.OrderComment;
 import io.github.jespersm.jpa.tripwire.indexinator.core.analyzer.EntityAnalyzer;
 import io.github.jespersm.jpa.tripwire.indexinator.core.detector.IssueDetector;
 import io.github.jespersm.jpa.tripwire.indexinator.core.model.*;
-import io.github.jespersm.jpa.tripwire.test.model.fixture.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import jakarta.persistence.*;

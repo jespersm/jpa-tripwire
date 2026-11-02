@@ -1,14 +1,14 @@
 package io.github.jespersm.jpa.tripwire.unselectinator.hibernate;
 
-import io.github.jespersm.jpa.tripwire.test.model.fixture.Address;
-import io.github.jespersm.jpa.tripwire.test.model.fixture.Customer;
-import io.github.jespersm.jpa.tripwire.test.model.fixture.LineItem;
-import io.github.jespersm.jpa.tripwire.test.model.fixture.Order;
-import io.github.jespersm.jpa.tripwire.test.model.fixture.OrderComment;
-import io.github.jespersm.jpa.tripwire.test.model.fixture.Product;
-import io.github.jespersm.jpa.tripwire.test.model.fixture.ProductCategory;
-import io.github.jespersm.jpa.tripwire.test.model.fixture.ProductReview;
-import io.github.jespersm.jpa.tripwire.test.model.fixture.ShippingInfo;
+import io.github.jespersm.jpa.tripwire.common.test.model.Address;
+import io.github.jespersm.jpa.tripwire.common.test.model.Customer;
+import io.github.jespersm.jpa.tripwire.common.test.model.LineItem;
+import io.github.jespersm.jpa.tripwire.common.test.model.Order;
+import io.github.jespersm.jpa.tripwire.common.test.model.OrderComment;
+import io.github.jespersm.jpa.tripwire.common.test.model.Product;
+import io.github.jespersm.jpa.tripwire.common.test.model.ProductCategory;
+import io.github.jespersm.jpa.tripwire.common.test.model.ProductReview;
+import io.github.jespersm.jpa.tripwire.common.test.model.ShippingInfo;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.EntityLoadTracker;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.LazyLoadKind;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.LazySelectReport;

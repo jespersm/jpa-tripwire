@@ -1,8 +1,5 @@
-package io.github.jespersm.jpa.tripwire.test.model.fixture;
+package io.github.jespersm.jpa.tripwire.common.test.model;
 
-import jakarta.persistence.AttributeOverride;
-import jakarta.persistence.AttributeOverrides;
-import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 
 import java.io.Serializable;

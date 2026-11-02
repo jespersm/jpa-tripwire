@@ -1,4 +1,4 @@
-package io.github.jespersm.jpa.tripwire.test.model.fixture;
+package io.github.jespersm.jpa.tripwire.common.test.model;
 
 import jakarta.persistence.*;
 import java.math.BigDecimal;
