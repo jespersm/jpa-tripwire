@@ -5,6 +5,7 @@ import io.github.jespersm.jpa.tripwire.indexinator.core.model.InspectionReport;
 import io.github.jespersm.jpa.tripwire.indexinator.core.model.Issue;
 import io.github.jespersm.jpa.tripwire.indexinator.core.model.IssueType;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.sql.Connection;
 import java.util.function.Predicate;
@@ -15,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Checks that Indexinator reports physical table and column names when given an EntityManagerFactory:
  * camelCase join column names, JOINED and SINGLE_TABLE inheritance, and lookups by primary key.
  */
+@ActiveProfiles({"test", "library"})
 class LibraryPhysicalNamingIndexinatorIntegrationTest extends AbstractLibraryTripwireTest {
 
     private static final String NAMING_FIXTURES = "io.github.jespersm.jpa.tripwire.test.library.naming";

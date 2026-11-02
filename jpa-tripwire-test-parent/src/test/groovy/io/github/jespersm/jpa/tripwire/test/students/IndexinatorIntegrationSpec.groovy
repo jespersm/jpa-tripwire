@@ -17,7 +17,7 @@ import spock.lang.Unroll
 
 @SpringBootTest(classes = StudentsTestApplication)
 @Import(UnselectinatorSpringConfiguration)
-@ActiveProfiles("test")
+@ActiveProfiles(["test", "students"])
 class IndexinatorIntegrationSpec extends AbstractTripwireSpec {
 
     def "detects missing indexes for mapped entities and repository queries"() {

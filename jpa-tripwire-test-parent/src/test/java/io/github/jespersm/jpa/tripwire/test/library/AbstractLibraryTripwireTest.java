@@ -19,7 +19,7 @@ import javax.sql.DataSource;
 
 @SpringBootTest(classes = LibraryTestApplication.class)
 @Import(UnselectinatorSpringConfiguration.class)
-@ActiveProfiles("library-test")
+@ActiveProfiles({"test", "library"})
 abstract class AbstractLibraryTripwireTest {
 
     @SuppressWarnings("resource")

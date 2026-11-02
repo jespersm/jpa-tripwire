@@ -13,7 +13,7 @@ import org.springframework.test.context.ActiveProfiles
 
 @SpringBootTest(classes = StudentsTestApplication)
 @Import(UnselectinatorSpringConfiguration)
-@ActiveProfiles("test")
+@ActiveProfiles(["test", "students"])
 class UnselectinatorIntegrationSpec extends AbstractTripwireSpec {
 
     @Transactional

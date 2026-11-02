@@ -18,7 +18,7 @@ import javax.sql.DataSource
 
 @SpringBootTest(classes = StudentsTestApplication)
 @Import(UnselectinatorSpringConfiguration)
-@ActiveProfiles("test")
+@ActiveProfiles(["test", "students"])
 abstract class AbstractTripwireSpec extends Specification {
 
     @SuppressWarnings("resource")

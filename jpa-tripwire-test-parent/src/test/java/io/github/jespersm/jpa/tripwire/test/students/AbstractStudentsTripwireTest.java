@@ -21,7 +21,7 @@ import javax.sql.DataSource;
  */
 @SpringBootTest(classes = StudentsTestApplication.class)
 @Import(UnselectinatorSpringConfiguration.class)
-@ActiveProfiles("test")
+@ActiveProfiles({"test", "students"})
 abstract class AbstractStudentsTripwireTest {
 
     @SuppressWarnings("resource")
