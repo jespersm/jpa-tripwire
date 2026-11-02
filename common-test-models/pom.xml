@@ -17,6 +17,11 @@
     </properties>
 
     <dependencies>
+        <!-- Consumers use this entire module in test scope, including its logging setup. -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
         <dependency>
             <groupId>jakarta.persistence</groupId>
             <artifactId>jakarta.persistence-api</artifactId>

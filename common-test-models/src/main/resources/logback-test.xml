@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%level %logger - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Shared by standalone Hibernate tests and the Spring Boot test runners. -->
+    <logger name="org.hibernate" level="ERROR"/>
+    <!-- Expected lazy-load warnings are asserted through reports in the tests. -->
+    <logger name="io.github.jespersm.jpa.tripwire.unselectinator.core.EntityLoadTracker" level="ERROR"/>
+
+    <root level="WARN">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>

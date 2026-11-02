@@ -18,11 +18,22 @@ The Spring Boot 3.5 and 4 runners execute the same integration tests from
 ./mvnw -pl jpa-tripwire-test-sb4 -am test
 ```
 
-These tests use Testcontainers PostgreSQL and require Docker. Test profiles set
-the PostgreSQL dialect explicitly and suppress routine Spring/Hibernate output,
-the Spring banner, and Tripwire's expected lazy-load warnings. Those warnings
-are the behavior under test; the tests assert on their reports instead. Raise
-the relevant logger levels locally when diagnosing a failure.
+These tests use Testcontainers PostgreSQL and require Docker, and suppress
+routine Spring/Hibernate output, the Spring banner, and Tripwire's expected
+lazy-load warnings. Those warnings are the behavior under test; the tests
+assert on their reports instead. Raise the relevant logger levels locally
+when diagnosing a failure.
+
+All test modules use the logging setup provided by `common-test-models`:
+`common-test-models/src/main/resources/logback-test.xml` keeps Hibernate and
+expected Tripwire lazy-load warnings at `ERROR`, and other loggers at `WARN`.
+The configuration is in main resources so it is included in the shared fixture
+JAR and discovered by Logback in both Maven and IDE runs. Change the relevant
+logger to `INFO` or `DEBUG` in that file when diagnosing tests; Spring Boot test
+profiles can also override logger levels with `logging.level.*` properties.
+Standalone tests bootstrap Hibernate directly and do not read those properties.
+Consumers depend on `common-test-models` in test scope, so its Logback dependency
+and configuration are not included in the published libraries.
 
 ### Project Structure
 
