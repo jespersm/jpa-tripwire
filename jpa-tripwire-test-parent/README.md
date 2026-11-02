@@ -9,7 +9,7 @@ This setup keeps test code in one place and runs it against multiple Spring Boot
     - `src/main/java` (entities, repositories, test app)
     - `src/test/java` (integration tests)
     - `src/test/resources` (test profiles and SQL fixtures)
-  - Shared fixtures include the `io.github.jespersm.jpa.tripwire.test` and `io.github.jespersm.jpa.tripwire.librarytest` packages.
+  - Shared fixtures include the `io.github.jespersm.jpa.tripwire.test.students` and `io.github.jespersm.jpa.tripwire.test.library` packages.
   - Holds shared `dependencyManagement` and imports Spring Boot BOM via `spring.boot.test.version`.
 - `jpa-tripwire-test-sb35/`
   - Source-less runner module for Spring Boot 3.5, targeting Java 17.
@@ -48,4 +48,4 @@ Each runner module (`jpa-tripwire-test-sb35`, `jpa-tripwire-test-sb4`) adds thes
 ## Notes
 
 - Tests use Testcontainers PostgreSQL, so Docker must be running for full test execution.
-- `AbstractTripwireTest` and `AbstractLibraryTripwireTest` activate the `test` and `library-test` profiles, respectively, to apply the matching SQL fixtures.
+- `AbstractStudentsTripwireTest` and `AbstractLibraryTripwireTest` activate the `test` and `library-test` profiles, respectively, to apply the matching SQL fixtures.

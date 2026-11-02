@@ -14,7 +14,7 @@
     <description>Integration tests for Spring Boot 3.5 + Hibernate 6.6 compatibility</description>
 
     <properties>
-        <spring.boot.test.version>3.5.12</spring.boot.test.version>
+        <spring.boot.test.version>3.5.16</spring.boot.test.version>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <maven.deploy.skip>true</maven.deploy.skip>
