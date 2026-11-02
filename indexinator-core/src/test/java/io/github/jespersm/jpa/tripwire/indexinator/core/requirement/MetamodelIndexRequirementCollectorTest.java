@@ -1,16 +1,14 @@
 package io.github.jespersm.jpa.tripwire.indexinator.core.requirement;
 
+import io.github.jespersm.jpa.tripwire.common.test.models.*;
 import io.github.jespersm.jpa.tripwire.indexinator.core.model.IssueSeverity;
 import io.github.jespersm.jpa.tripwire.indexinator.core.model.IssueType;
-import io.github.jespersm.jpa.tripwire.test.model.fixture.*;
 import jakarta.persistence.metamodel.Metamodel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 

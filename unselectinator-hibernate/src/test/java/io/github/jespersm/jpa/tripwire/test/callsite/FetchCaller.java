@@ -1,7 +1,7 @@
 package io.github.jespersm.jpa.tripwire.test.callsite;
 
-import io.github.jespersm.jpa.tripwire.test.model.fixture.Customer;
-import io.github.jespersm.jpa.tripwire.test.model.fixture.Order;
+import io.github.jespersm.jpa.tripwire.common.test.models.Customer;
+import io.github.jespersm.jpa.tripwire.common.test.models.Order;
 import jakarta.persistence.EntityManager;
 
 import java.util.function.Supplier;
