@@ -4,15 +4,13 @@ Tools for inspecting JPA/Hibernate models and databases to detect potential perf
 
 ## Overview
 
-I built the JPA Tripwire to help developers identify common database performance issues rooted in the leaking abstraction that is an O/R Mapper.
- The tool analyzes your entity classes and the actual database schema to find discrepancies that can lead to slow queries and performance degradation:
+I built JPA Tripwire to help developers identify common database performance issues rooted in the leaking abstraction that is an O/R Mapper - automating some good practices, so you don't have to. The tool analyzes your entity classes and the actual database schema, and can intercept EntityManager operations to trap some of the situations which may slow down your queries:
 
-- N+1 selects due to missing fetch graphs or general belief in magic
-- Missing indexes on foreign key columns
-- Missing indexes on unique constraint columns
-- Tables without primary keys
-- Missing indexes on frequently queried columns
-- Suboptimal composite indexes
+- N+1 selects due to unfortunate fetch strategies (remember: hope is not a strategy, nor is general belief in magic).
+- Missing indexes on constraint columns (which might happen with hand-crafted DB migrations)
+- JPA Repository operations without reasonable index coverage
+
+The functionality is split into two oddly named tools:
 
 ## Unselectinator: How to spot N+1 selects in integration tests
 
@@ -108,23 +106,30 @@ The optional `indexinator-hibernate` module provides a ServiceLoader-based
 it uses Hibernate mapping metadata to resolve physical table and column names,
 including naming strategies and inheritance mappings.
 
-## Publishing releases
+## What it's not
 
-The `release` Maven profile generates sources, Javadoc, and PGP signatures before
-publishing to Maven Central. The release workflow imports the signing key using
-`actions/setup-java`. Configure these secrets for the `central-releases` environment:
+This tool grew out of specific needs for better guardrails, so (more) developers could work on functionality, without the fear of introducing performance problems which would never show up in integrations tests, on nearly empty tables with local database. This tool does this, and it may work for you as well.
 
-- `CENTRAL_TOKEN_USER` and `CENTRAL_TOKEN_PASS`: Central Portal token credentials.
-- `GPG_PRIVATE_KEY`: the ASCII-armored private signing key.
-- `GPG_PASSPHRASE`: the signing key's passphrase.
+* However: It was built to fit my requirements, **not** yours - sorry!
+  * Please open a bug if you feel there's something missing, or have an idea for a concrete improvement.
 
-Publish the corresponding public key to a keyserver supported by Central, as
-described in [Central's PGP guide](https://central.sonatype.org/publish/requirements/gpg/).
-The snapshot workflow skips signing and uses only the Central token credentials.
+* I know it's **not** perfect - there are uncovered features, since Hibernate can do _so much_.
 
-To retry a failed Central deployment, open **Actions → Release → Run workflow**,
-select `main`, and enter the existing release tag (for example, `v1.0.0`). This
-uses the current workflow from `main` to publish the tagged source without
-creating another GitHub release. The tag must contain the signing configuration,
-and its Maven version must match the tag without the `v` prefix. Only retry a
-version that has not already been published successfully to Central.
+* The tools are **not** intended for use in your production code path due to the overhead, which I haven't measured for performance and/or memory overhead. Just run it with your integration tests.
+
+* It's __not__ all you need to make application which runs efficiently and fast. Rather, remember to:
+  * Set performance targets
+  * Measure and observe in relevant environments
+  * Plan and execute performance tests and load/stress tests - bottlenecks are never where you expect
+
+* Also, I'm not a Hibernate expert by any means, and this tool is not a one-stop-shop of all you need to know. Please consult the great resources on JPA and Hibernate, such as:
+  * [Vlad Mihalcea's Hibernate Tutorials](https://vladmihalcea.com/tutorials/hibernate/) contains a *bunch* of valuable insights, and his tool, the [Hypersistence Optimizer](https://vladmihalcea.com/hypersistence-optimizer/) might be an option for you
+  * [Thorben Janssen's tutuorials on Hibernate and JPA](https://thorben-janssen.com/tutorials/) are full of sound advice
+  * Baeldung has the extensive [Learn JPA & Hibernate Series](https://www.baeldung.com/learn-jpa-hibernate)
+ 
+## Future directions
+
+I tried to limit the framework lock-in as much as possible, and allow room for implementing variants for other EntityManager than Hibernate, but it hasn't been worked on.
+Also, how about some more model vs. schema checks, e.g. for nullness and type details? Or other lints.
+
+Please file an enhancement request describing the motivation, and we'll see. PRs are also very much welcomed! 
