@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.4](https://github.com/jespersm/jpa-tripwire/compare/v1.0.3...v1.0.4) (2026-11-06)
+
+
+### Bug Fixes
+
+* **deps:** bump com.h2database:h2 from 2.2.224 to 2.5.252 ([#67](https://github.com/jespersm/jpa-tripwire/issues/67)) ([120dc84](https://github.com/jespersm/jpa-tripwire/commit/120dc8410888d70913b9c3248739d7b0e5554cc9))
+
+
+### Documentation
+
+* Update README for clarity and additional details ([0936604](https://github.com/jespersm/jpa-tripwire/commit/0936604fa597dc1286b649019461bbbb84809676))
+
 ## [1.0.3](https://github.com/jespersm/jpa-tripwire/compare/v1.0.2...v1.0.3) (2026-11-02)
 
 
