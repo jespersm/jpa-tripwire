@@ -4,7 +4,7 @@
 
     <groupId>io.github.jespersm.jpa-tripwire</groupId>
     <artifactId>jpa-tripwire-parent</artifactId>
-    <version>1.0.3</version>
+    <version>1.0.4-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>JPA Tripwire</name>
@@ -136,7 +136,7 @@
                     <plugin>
                         <groupId>org.sonatype.central</groupId>
                         <artifactId>central-publishing-maven-plugin</artifactId>
-                        <version>0.11.0</version>
+                        <version>0.12.0</version>
                         <extensions>true</extensions>
                         <configuration>
                             <publishingServerId>central</publishingServerId>
