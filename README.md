@@ -58,7 +58,11 @@ See [`UnselectinatorIntegrationTest`](jpa-tripwire-test-parent/src/test/java/io/
 
 The tracker observes entity loads and SELECT statements during repository and `EntityManager` operations to report lazy loads that may indicate an N+1 pattern. Hibernate is currently the only supported JPA provider.
 
-### Always-on enforcement
+### Unselectinator: Running with always-on enforcement
+
+If you think you're "generally ok" w.r.t. 1+N-selects, you can use the Unselectinator
+for *all* your integration tests. Each EntityManager will track loadded entities and collections
+and tally the lazy loads, and throw exceptions when it crosses your threshold.
 
 Add `@EnableUnselectinatorAlwaysOn` to a Spring test or its shared configuration.
 It imports the instrumentation above and checks each open Hibernate session without
