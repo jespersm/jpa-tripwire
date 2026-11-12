@@ -6,7 +6,7 @@ Tools for inspecting JPA/Hibernate models and databases to detect potential perf
 
 I built JPA Tripwire to help developers identify common database performance issues rooted in the leaking abstraction that is an O/R Mapper - automating some good practices, so you don't have to. The tool analyzes your entity classes and the actual database schema, and can intercept EntityManager operations to trap some of the situations which may slow down your queries:
 
-- N+1 selects due to unfortunate fetch strategies (remember: hope is not a strategy, nor is general belief in magic).
+- N+1 selects due to unfortunate fetch patterns (remember: hope is not a strategy, nor is general belief in magic).
 - Missing indexes on constraint columns (which might happen with hand-crafted DB migrations)
 - JPA Repository operations without reasonable index coverage
 
