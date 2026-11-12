@@ -8,6 +8,12 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.Set;
+import java.util.Spliterator;
+import java.util.Spliterators;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 /**
  * Creates JPA proxies that mark explicit EntityManager fetch endpoints.
@@ -21,6 +27,7 @@ public final class ObservedEntityManagerFactory {
     private static final Set<String> QUERY_EXECUTION_METHODS = Set.of(
             "getResultList",
             "getSingleResult",
+            "getSingleResultOrNull",
             "getResultStream",
             "executeUpdate"
     );
@@ -83,7 +90,9 @@ public final class ObservedEntityManagerFactory {
                 FetchEndpoint endpoint = FetchEndpoints.entityManagerMethod(methodName);
                 tracker.beginExplicitFetch(endpoint);
                 try {
-                    return invokeDelegate(method, delegate, args);
+                    Object result = invokeDelegate(method, delegate, args);
+                    tracker.recordFetchResult(delegate, result, tracker.currentFetchOrigin(), true);
+                    return result;
                 } finally {
                     tracker.endExplicitFetch();
                 }
@@ -119,6 +128,12 @@ public final class ObservedEntityManagerFactory {
                 tracker.beginExplicitFetch(endpoint);
                 try {
                     result = invokeDelegate(method, delegate, args);
+                    var origin = tracker.currentFetchOrigin();
+                    if (result instanceof Stream<?> stream && origin != null) {
+                        result = observeStream(stream, delegate, tracker, origin);
+                    } else if (!method.getName().equals("executeUpdate")) {
+                        tracker.recordFetchResult(delegate, result, origin, true);
+                    }
                 } finally {
                     tracker.endExplicitFetch();
                 }
@@ -138,5 +153,38 @@ public final class ObservedEntityManagerFactory {
                 new Class<?>[]{proxyType},
                 handler
         );
+    }
+
+    private static <T> Stream<T> observeStream(Stream<T> stream, Query query, EntityLoadTracker tracker,
+                                               FetchOrigin origin) {
+        tracker.recordFetchResult(query, null, origin, false);
+        var source = stream.spliterator();
+        var completed = new AtomicBoolean();
+        Runnable finish = () -> {
+            if (completed.compareAndSet(false, true)) {
+                tracker.recordFetchResult(query, null, origin, true);
+            }
+        };
+        var observed = new Spliterators.AbstractSpliterator<T>(source.estimateSize(),
+                source.characteristics() & ~(Spliterator.SIZED | Spliterator.SUBSIZED | Spliterator.SORTED)) {
+            @Override
+            public boolean tryAdvance(Consumer<? super T> action) {
+                boolean next = source.tryAdvance(value -> {
+                    tracker.recordFetchResult(query, value, origin, false);
+                    action.accept(value);
+                });
+                if (!next) {
+                    finish.run();
+                }
+                return next;
+            }
+        };
+        return StreamSupport.stream(observed, false).onClose(() -> {
+            try {
+                stream.close();
+            } finally {
+                finish.run();
+            }
+        });
     }
 }

@@ -6,7 +6,7 @@ Tools for inspecting JPA/Hibernate models and databases to detect potential perf
 
 I built JPA Tripwire to help developers identify common database performance issues rooted in the leaking abstraction that is an O/R Mapper - automating some good practices, so you don't have to. The tool analyzes your entity classes and the actual database schema, and can intercept EntityManager operations to trap some of the situations which may slow down your queries:
 
-- N+1 selects due to unfortunate fetch strategies (remember: hope is not a strategy, nor is general belief in magic).
+- N+1 selects due to unfortunate fetch patterns (remember: hope is not a strategy, nor is general belief in magic).
 - Missing indexes on constraint columns (which might happen with hand-crafted DB migrations)
 - JPA Repository operations without reasonable index coverage
 
@@ -54,9 +54,59 @@ You can also put the reference into a shared test base class:
 abstract class AbstractMyTest { }
 ```
 
-See [`UnselectinatorIntegrationTest`](jpa-tripwire-test-parent/src/test/java/io/github/jespersm/jpa/tripwire/test/UnselectinatorIntegrationTest.java) for a working example.
+See [`UnselectinatorIntegrationTest`](jpa-tripwire-test-parent/src/test/java/io/github/jespersm/jpa/tripwire/test/students/UnselectinatorIntegrationTest.java) for a working example.
 
 The tracker observes entity loads and SELECT statements during repository and `EntityManager` operations to report lazy loads that may indicate an N+1 pattern. Hibernate is currently the only supported JPA provider.
+
+### Unselectinator: Running with always-on enforcement
+
+If you think you're "generally ok" w.r.t. 1+N-selects, you can use the Unselectinator
+for *all* your integration tests. Each EntityManager will track loadded entities and collections
+and tally the lazy loads, and throw exceptions when it crosses your threshold.
+
+Add `@EnableUnselectinatorAlwaysOn` to a Spring test or its shared configuration.
+It imports the instrumentation above and checks each open Hibernate session without
+requiring an `observe(...)` block:
+
+```java
+@SpringBootTest(classes = MyApp.class)
+@EnableUnselectinatorAlwaysOn(
+        ratio = 0.5,
+        minimumGroupSize = 6,
+        minimumLazyLoads = 2,
+        includes = {B.class}, // optional: all entity types by default
+        excludes = {}       // optional: exclusions take precedence
+)
+@Transactional
+class MyIntegrationTest {
+    @Test
+    void detectsLazySelects() {
+        var bs = entityManager.find(A.class, 1L).getBs();
+        // Loading this collection establishes a group; no role/property configuration.
+        bs.forEach(b -> b.getC().getName());
+    }
+}
+```
+
+The guard evaluates each association group using:
+ratio = successful lazy operations / distinct members in the group
+minimumGroupSize = the smallest group considered for enforcement
+minimumLazyLoads = the minimum number of successful lazy loads required before a violation.
+
+Defaults are ratio = 0.5, minimumGroupSize = 5, and minimumLazyLoads = 3. includes/excludes apply
+to the entity type that owns the association, including subclasses.
+
+If a group crosses the configured limits, the session throws `CollectionLoadGuard.ThresholdExceededException` after the lazy load completes.
+
+When JUnit Jupiter is also on the test classpath, JUnit integration automatically converts an uncaught ThresholdExceededException (including one wrapped by another exception) into a test assertion failure.
+
+### Limitations
+
+- Memory bloat: State is deduplicated and cleared with the session, but
+  long-lived sessions can accumulate memory usage.
+- Individual SQL classification is intentionally deferred.
+- Unrelated SQL outside lazy initialization is ignored.
+- Direct JDBC work performed inside custom load callbacks, or raw Hibernate queries may pollute the findings.
 
 ## Indexinator: How to assert your database is properly indexed
 
@@ -87,7 +137,7 @@ try (Connection connection = dataSource.getConnection()) {
 }
 ```
 
-See [`IndexinatorIntegrationTest`](jpa-tripwire-test-parent/src/test/java/io/github/jespersm/jpa/tripwire/test/IndexinatorIntegrationTest.java) for a working example.
+See [`IndexinatorIntegrationTest`](jpa-tripwire-test-parent/src/test/java/io/github/jespersm/jpa/tripwire/test/students/IndexinatorIntegrationTest.java) for a working example.
 
 ### Detection types
 
