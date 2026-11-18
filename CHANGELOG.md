@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.4](https://github.com/jespersm/jpa-tripwire/compare/v1.0.3...v1.0.4) (2026-11-18)
+
+
+### Bug Fixes
+
+* **deps:** bump com.h2database:h2 from 2.2.224 to 2.5.252 ([#67](https://github.com/jespersm/jpa-tripwire/issues/67)) ([120dc84](https://github.com/jespersm/jpa-tripwire/commit/120dc8410888d70913b9c3248739d7b0e5554cc9))
+* **deps:** bump org.apache.maven.plugins:maven-surefire-plugin ([#70](https://github.com/jespersm/jpa-tripwire/issues/70)) ([dd061df](https://github.com/jespersm/jpa-tripwire/commit/dd061df03a2a808723843d7db4ccbb5f6ead17c5))
+* **deps:** bump org.jacoco:jacoco-maven-plugin from 0.8.15 to 0.8.16 ([#68](https://github.com/jespersm/jpa-tripwire/issues/68)) ([079e76d](https://github.com/jespersm/jpa-tripwire/commit/079e76d4676573097e7d97875b0f1893374d6d7b))
+
+
+### Documentation
+
+* Update README for clarity and additional details ([0936604](https://github.com/jespersm/jpa-tripwire/commit/0936604fa597dc1286b649019461bbbb84809676))
+
 ## [1.0.3](https://github.com/jespersm/jpa-tripwire/compare/v1.0.2...v1.0.3) (2026-11-02)
 
 
