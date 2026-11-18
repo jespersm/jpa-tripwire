@@ -10,6 +10,11 @@ package io.github.jespersm.jpa.tripwire.unselectinator.core;
  */
 public record SourceLocation(String className, String methodName, String fileName, int lineNumber) {
 
+    /** Capture the current application caller, excluding persistence and proxy infrastructure. */
+    public static SourceLocation capture() {
+        return StackFrameCapture.captureUserLocation();
+    }
+
     @Override
     public String toString() {
         return className + "#" + methodName + "(" + fileName + ":" + lineNumber + ")";

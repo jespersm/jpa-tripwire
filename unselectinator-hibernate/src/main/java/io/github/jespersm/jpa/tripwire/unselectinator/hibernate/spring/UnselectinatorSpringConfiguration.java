@@ -4,6 +4,11 @@ import io.github.jespersm.jpa.tripwire.unselectinator.core.EntityLoadTracker;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.ObservedEntityManagerFactory;
 import io.github.jespersm.jpa.tripwire.unselectinator.core.Unselectinator;
 import io.github.jespersm.jpa.tripwire.unselectinator.hibernate.HibernateUnselectinator;
+import io.github.jespersm.jpa.tripwire.unselectinator.hibernate.CollectionLoadGuard;
+import org.hibernate.integrator.spi.Integrator;
+import org.hibernate.jpa.boot.spi.IntegratorProvider;
+import org.hibernate.resource.jdbc.spi.StatementInspector;
+import java.util.ArrayList;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.cfg.AvailableSettings;
@@ -77,20 +82,35 @@ public class UnselectinatorSpringConfiguration {
      */
     @Bean
     public static BeanPostProcessor unselectinatorEntityManagerFactoryPostProcessor(
-            ObjectProvider<EntityLoadTracker> trackerProvider) {
+            ObjectProvider<EntityLoadTracker> trackerProvider, ObjectProvider<CollectionLoadGuard> guards) {
         return new BeanPostProcessor() {
             @Override
             public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
                 if (bean instanceof LocalContainerEntityManagerFactoryBean emfb) {
                     EntityLoadTracker tracker = trackerProvider.getObject();
-                    emfb.getJpaPropertyMap().put(
-                            AvailableSettings.STATEMENT_INSPECTOR,
-                            HibernateUnselectinator.statementInspector(tracker)
-                    );
-                    emfb.getJpaPropertyMap().put(
-                            "hibernate.integrator_provider",
-                            HibernateUnselectinator.integratorProvider(tracker)
-                    );
+                    var properties = emfb.getJpaPropertyMap();
+                    var inspector = HibernateUnselectinator.statementInspector(tracker);
+                    Object existingInspector = properties.get(AvailableSettings.STATEMENT_INSPECTOR);
+                    if (existingInspector instanceof StatementInspector existing) {
+                        properties.put(AvailableSettings.STATEMENT_INSPECTOR, (StatementInspector) sql -> {
+                            String inspected = existing.inspect(sql);
+                            return inspector.inspect(inspected != null ? inspected : sql);
+                        });
+                    } else if (existingInspector == null) {
+                        properties.put(AvailableSettings.STATEMENT_INSPECTOR, inspector);
+                    } else {
+                        throw new IllegalArgumentException("Provide an existing StatementInspector as an instance when enabling Unselectinator");
+                    }
+                    Object existingProvider = properties.get("hibernate.integrator_provider");
+                    var integrators = new ArrayList<Integrator>();
+                    if (existingProvider instanceof IntegratorProvider provider) {
+                        integrators.addAll(provider.getIntegrators());
+                    } else if (existingProvider != null) {
+                        throw new IllegalArgumentException("Provide an existing IntegratorProvider as an instance when enabling Unselectinator");
+                    }
+                    integrators.addAll(HibernateUnselectinator.integratorProvider(tracker).getIntegrators());
+                    guards.orderedStream().forEach(integrators::add);
+                    properties.put("hibernate.integrator_provider", (IntegratorProvider) () -> integrators);
                 }
                 return bean;
             }
